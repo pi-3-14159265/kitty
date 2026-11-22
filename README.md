@@ -21,8 +21,6 @@ The full documentation is maintained in [`docs/`](docs/README.md), organized as 
 - [Sprites](docs/sprites.md)
 - [Complete reference](docs/reference.md)
 
-Publishing the documentation to GitHub Wiki is documented in [WIKI.md](WIKI.md).
-
 ## Quick example
 
 ```python
