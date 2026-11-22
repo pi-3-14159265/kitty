@@ -1,36 +1,121 @@
-## Compile
+# Your first Kitty project
+
+Kitty translates small pieces of Python-like code into Scratch 3 blocks.
+You write code in a `.py` file, then use the Kitty compiler to create a `.sb3`
+file. The `.sb3` file opens in Scratch.
+
+## What you need
+
+- Python installed on your computer
+- A Scratch 3 account or Scratch 3 editor
+- The Kitty project folder
+
+Kitty does not need extra Python packages. Do not install third-party
+libraries for a Kitty project: Kitty allows only `kitty` and `math` imports.
+
+## Step 1: create `cat.py`
+
+Create a plain text file named `cat.py` in the Kitty folder:
+
+```python
+import kitty
+
+@kitty.green_flag
+def start():
+    kitty.say("Hello!")
+    kitty.move(10)
+```
+
+## Step 2: compile it
+
+Run this command in a terminal opened in the Kitty folder:
+
+```bash
+python comp.py cat.py
+```
+
+On success, Kitty prints the output path and creates `cat.sb3` beside
+`cat.py`.
+
+Open `cat.sb3` in Scratch. If you open it on the Scratch website, use
+**File > Load from your computer**. Then click the green flag.
+
+## Step 3: add a score
+
+Variables start near the top of the file:
+
+```python
+import kitty
+
+score = 0
+
+@kitty.green_flag
+def start():
+    global score
+    score += 1
+    kitty.say(score)
+```
+
+The `global score` line is needed only inside a function that changes a
+sprite variable. A function that only reads `score` does not need `global`.
+
+## Compile one or more files
 
 ```bash
 python comp.py script.py
-python comp.py stage.py cat.py -o game.sb3
+python comp.py cat.py mouse.py
+python comp.py cat.py mouse.py -o game.sb3
 python comp.py folder/
 ```
 
-One script becomes `<name>.sb3` next to that file. Several scripts default to
-`project.sb3`. A directory uses the same rule after collecting its files: one
-eligible file defaults to that file's `<name>.sb3`, while multiple files
-default to `project.sb3`. A directory compiles every `.py` file in it except
-`comp.py`, `kitty.py`, and `decomp.py`.
+- One script: output is `<script-name>.sb3` beside that script.
+- Multiple scripts: output is `project.sb3`.
+- `-o` or `--output`: choose a different `.sb3` name.
+- A directory: compile `.py` files directly inside it.
 
-The directory scan is not recursive; only `.py` files directly inside the
-directory are included. If a directory contains no eligible Python files,
-compilation fails. If no stage is supplied, Kitty adds an empty stage with a
-white `backdrop1`. The output directory is created when needed, and an
-existing output archive is replaced.
+The directory list does not search subfolders. It skips `comp.py`,
+`kitty.py`, and `decomp.py`.
 
-Compilation errors are printed to standard error and the command exits with
-status 1. The compiler only permits the `kitty` and `math` modules; other
-imports are rejected. A project may contain only one stage.
+If there are no eligible Python files, the compiler stops with an error.
+If no stage is provided, Kitty creates a white `backdrop1` stage.
+An existing output file is replaced.
+
+## Turn a Scratch project back into text
 
 ```bash
 python decomp.py game.sb3
 python decomp.py game.sb3 output_folder
 ```
 
-`decomp` writes the project back out as a folder. With no output folder, it
-uses a folder beside the archive with the archive's extension removed
-(`game.sb3` becomes `game/`). If that path is an existing file, it uses
-`game_decompiled/` instead. Each target gets a directory containing
-`script.txt` next to its costumes and sounds. The stage is the `Stage`
-directory. `project.txt` sits at the top. The input must be a Scratch ZIP archive (normally named `.sb3`)
-containing `project.json`; the filename extension itself is not validated.
+The decompiler expects a Scratch `.sb3` ZIP file containing `project.json`.
+It creates folders for the stage and sprites. Each folder contains
+`script.txt`, costumes, and sounds. The top folder contains `project.txt`.
+
+With no output folder, `game.sb3` becomes `game/`. If `game/` is already a
+file, Kitty instead uses `game_decompiled/`.
+
+## Common first mistakes
+
+### I get “no Python scripts”
+
+Check that the folder has a `.py` file directly inside it. Kitty does not scan
+nested folders.
+
+### Scratch does not open the file
+
+Make sure the compiler created a `.sb3` file, then use Scratch’s
+**Load from your computer** option.
+
+### I get an unknown name
+
+A name must be created before it is used:
+
+```python
+score = 0
+kitty.say(score)
+```
+
+### The program says only kitty and math can be imported
+
+Kitty does not run ordinary third-party Python packages. Keep imports to
+`kitty` and `math`, or use `from math import sin`.

@@ -1,4 +1,23 @@
-## Lists
+# Lists
+
+A list holds many values in one name. It is like a Scratch list, but Kitty
+uses `0` for the first position.
+
+## First list
+
+```python
+import kitty
+
+items = ["worm", "fish"]
+
+@kitty.green_flag
+def start():
+    kitty.say(items[0])  # worm
+    kitty.say(items[1])  # fish
+    kitty.say(len(items))
+```
+
+Scratch uses item `1` for the first value. Kitty code uses item `[0]`.
 
 Lists start at 0, the same way Python lists do. `items[0]` is the first item. `items[-1]` is the last item. `"last"`, `"all"`, and `"random"` are extra indexes on a one-dimensional list. `"all"` belongs on delete.
 

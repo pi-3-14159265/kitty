@@ -1,4 +1,19 @@
-## Dictionaries
+# Dictionaries
+
+A dictionary stores pairs of names and values. The name side is called a key,
+and the other side is called a value.
+
+## First dictionary
+
+```python
+import kitty
+
+scores = {"Ada": 3, "Bea": 5}
+
+@kitty.green_flag
+def start():
+    kitty.say(scores["Ada"])
+```
 
 A dictionary is two Scratch lists, one for keys and one for values. Keys and values are numbers or text.
 

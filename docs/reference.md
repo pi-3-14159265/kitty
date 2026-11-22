@@ -2,6 +2,10 @@
 
 Each entry is the function the editor completes. The argument list is the popup. Where a menu has fixed choices, those choices are the ones the popup offers.
 
+Start with [Scratch and Python side by side](scratch-and-python.md) if you are
+moving from Scratch. Use [Limitations and troubleshooting](limitations.md)
+before using an advanced feature.
+
 ## Reference sections
 
 - [Events](events.md)

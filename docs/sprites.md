@@ -1,4 +1,18 @@
-## Sprites
+# Sprites
+
+One `.py` file normally makes one Scratch sprite. The file name becomes the
+sprite name. Use `stage.py` to make the stage.
+
+## First named sprite
+
+```python
+# Cat.py
+import kitty
+
+@kitty.green_flag
+def start():
+    kitty.say("Meow!")
+```
 
 Unless it declares a decorated target or sprite instances, a plain script
 becomes one sprite named after the file. A file named `stage.py` is the stage.

@@ -1,4 +1,18 @@
-## Functions
+# Functions
+
+A function is a reusable set of steps. A function with a decorator such as
+`@kitty.green_flag` starts on its own. A normal function is called by name.
+
+## First custom block
+
+```python
+import kitty
+
+def greet(name):
+    kitty.say("Hello " + name)
+
+greet("Ada")
+```
 
 A function is a named chunk of blocks you can run again. Kitty has two kinds.
 
