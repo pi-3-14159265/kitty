@@ -1017,6 +1017,56 @@ A class that inherits `kitty.Stage` is the stage. Backdrop declarations belong h
 
 Menu targets accept a sprite name. `mouse` is the same as `mouse-pointer`.
 
+### The Scratch screen and SVG coordinates
+
+Scratch uses **screen coordinates**, not HTML/SVG page coordinates:
+
+- the actual center of the screen is `(0, 0)`
+- x increases to the right, from `-240` to `240`
+- y increases upward, from `-180` to `180`
+- the top-left of the stage is approximately `(-240, 180)`
+- the bottom-right of the stage is approximately `(240, -180)`
+
+Consequently, `kitty.go_to_xy(0, 0)` places a sprite at the center of the
+screen. It does not place the sprite at the top-left or in the corner.
+
+SVG artwork is also easier to use if its visible subject is centered in the
+SVG canvas. The image itself does not use Scratch coordinates: a 64 x 64
+costume is not drawn with `(0, 0)` at its top-left in Scratch. A full stage
+backdrop is commonly 480 x 360, with its pixel center at `(240, 180)` inside
+the SVG. Scratch maps that center to screen coordinate `(0, 0)`.
+
+For example, this costume is intentionally centered around SVG point
+`(32, 32)`:
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="64" height="64" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="24" fill="#4C97FF"/>
+</svg>
+```
+
+This is more reliable than drawing the subject in a corner and using an
+offset in Python. If the subject is a 64 x 64 circle whose center is
+`(32, 32)`, placing the sprite at `(0, 0)` puts the circle at the center of
+the screen.
+
+For a 480 x 360 backdrop, keep the scene centered around `(240, 180)`:
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="480" height="360" viewBox="0 0 480 360">
+  <rect width="480" height="360" fill="#78B84A"/>
+  <circle cx="240" cy="180" r="30" fill="#FFFFFF"/>
+</svg>
+```
+
+Do not convert SVG coordinates directly into Kitty coordinates. An SVG point
+such as `(240, 180)` is a pixel position in the image; Scratch screen
+coordinate `(0, 0)` is the stage center. Kitty movement functions such as
+`kitty.go_to_xy(0, 0)` and `self.go_to_xy(0, 0)` always use Scratch screen
+coordinates.
+
 ### kitty.move
 
 Move the sprite.
@@ -2467,6 +2517,12 @@ kitty.change_pen("transparency", 5)
 ## Costumes, sounds, and names
 
 These add files. They are not stack blocks, and they do not belong inside a loop. Paths are relative to the script. Costume files are `svg`, `png`, or `jpg`. Sounds are usually `wav`.
+
+When creating SVG artwork, center the subject in the SVG canvas. Scratch
+uses `(0, 0)` as the stage center, not the top-left corner. A 64 x 64
+costume should normally put its subject around `(32, 32)`. A 480 x 360
+backdrop should normally put its central scene around `(240, 180)`.
+See [The Scratch screen and SVG coordinates](#the-scratch-screen-and-svg-coordinates).
 
 ### kitty.costume
 
