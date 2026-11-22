@@ -1,18 +1,18 @@
-# Scratch and Python side by side
+# Python syntax and Scratch API
 
-Kitty is easiest to learn if you already know a Scratch block. The table below
-matches common Scratch ideas to Kitty code.
+Use Python syntax for program structure. Use the `kitty` module for Scratch
+operations that Python does not define.
 
 ## Events
 
-| Scratch | Kitty |
+| Python or Kitty syntax | Scratch operation |
 | --- | --- |
-| when green flag clicked | `@kitty.green_flag` |
-| when [space] key pressed | `@kitty.when_key("space")` |
-| when this sprite clicked | `@kitty.when_clicked` |
-| when backdrop switches to [name] | `@kitty.when_backdrop("name")` |
-| when I receive [message] | `@kitty.when_receive("message")` |
-| broadcast [message] | `kitty.broadcast("message")` |
+| `@kitty.green_flag` | when green flag clicked |
+| `@kitty.when_key("space")` | when [space] key pressed |
+| `@kitty.when_clicked` | when this sprite clicked |
+| `@kitty.when_backdrop("name")` | when backdrop switches to [name] |
+| `@kitty.when_receive("message")` | when I receive [message] |
+| `kitty.broadcast("message")` | broadcast [message] |
 
 ## Movement
 

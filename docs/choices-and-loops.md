@@ -1,6 +1,8 @@
-# Choices and loops
+# Control flow
 
-Choices run code only when something is true. Loops run code several times.
+Kitty uses Python control-flow syntax directly. Use Python `while`, `for`,
+`break`, `continue`, `if`, `elif`, and `else`; use Kitty APIs only for
+Scratch-specific conditions and actions.
 
 ## If, elif, and else
 
@@ -78,25 +80,50 @@ for name in scores:
 
 For a dictionary, `name` is each key. Use `scores[name]` to read its value.
 
-## Repeat until a key or condition
+## Infinite loops
+
+```python
+while True:
+    kitty.move(10)
+
+    if kitty.touching("edge"):
+        break
+```
+
+Use `break` to exit the loop and `continue` to skip the remainder of the
+current pass:
+
+```python
+while True:
+    if kitty.key_pressed("space"):
+        continue
+
+    kitty.move(10)
+    break
+```
+
+## Repeat until a condition
+
+For a loop that should stop when a Python condition becomes false:
 
 ```python
 while not kitty.key_pressed("space"):
     kitty.move(10)
 ```
 
-This is a Scratch repeat-until block. It runs until the space key is pressed.
+For a loop that should stop when a condition becomes true:
 
 ```python
-while True:
+while not kitty.touching("edge"):
     kitty.move(10)
 ```
 
-`while True` becomes a forever loop.
+The compiler supports ordinary `while` tests.
 
-## Alternative `with` loops
+## Compatibility `with` blocks
 
-The normal Python forms are usually easiest, but Kitty also supports:
+Kitty also retains Scratch-shaped `with` blocks, but Python control flow is
+recommended for new code:
 
 ```python
 with kitty.repeat(10):
@@ -111,5 +138,3 @@ with kitty.forever():
 with kitty.if_(kitty.touching("edge")):
     kitty.hide()
 ```
-
-`kitty.if_` has no `elif` or `else`. Use a Python `if` when you need them.

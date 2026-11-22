@@ -1,16 +1,15 @@
-﻿# Kitty
+# Kitty
 
-**Kitty helps you move from Scratch to Python while keeping the same fun, visual
-Scratch blocks.**
+Kitty is a Python library and compiler for creating Scratch 3 projects.
 
-Scratch is a great place to learn programming. Kitty keeps familiar ideas
-such as sprites, blocks, variables, loops, costumes, and broadcasts, but lets
-you write them in Python. Kitty reads your Python-like script and turns it into
-a Scratch 3 `.sb3` project. It does **not** run your script normally in Python.
+Write Python syntax directly. Use normal variables, functions, conditionals,
+lists, dictionaries, `for` loops, and `while` loops. Use `kitty` for blocks
+that are specific to Scratch.
 
-## Your first Kitty project
+Kitty source is compiled into an `.sb3` file. It is not interpreted by the
+Python runtime when the resulting Scratch project runs.
 
-Create a file named `cat.py`:
+## Example
 
 ```python
 import kitty
@@ -20,129 +19,74 @@ score = 0
 @kitty.green_flag
 def start():
     global score
-    kitty.say("Hello!")
-    kitty.move(10)
-    score += 1
-    kitty.say(score)
-```
 
-Compile it:
-
-```bash
-python comp.py cat.py
-```
-
-Open `cat.sb3` in Scratch. Click the green flag. The Cat sprite will say
-hello, move 10 steps, set `score` to `1`, and say `1`.
-
-## Scratch block, Kitty code
-
-| Scratch idea | Kitty code |
-| --- | --- |
-| When green flag clicked | `@kitty.green_flag` |
-| Say Hello! | `kitty.say("Hello!")` |
-| Move 10 steps | `kitty.move(10)` |
-| Change x by 10 | `kitty.change_x(10)` |
-| Repeat 10 | `for _ in range(10):` |
-| If on edge, bounce | `kitty.if_on_edge_bounce()` |
-| Create a variable | `score = 0` |
-| Change a variable by 1 | `score += 1` |
-| Broadcast a message | `kitty.broadcast("go")` |
-
-## Tiny examples
-
-### Move and turn
-
-```python
-import kitty
-
-@kitty.green_flag
-def start():
-    for _ in range(10):
+    while True:
         kitty.move(10)
-        kitty.turn_right(90)
+        score += 1
+
+        if kitty.touching("edge"):
+            break
 ```
 
-### Repeat only while a key is not pressed
+The same Python constructs used outside Kitty are preferred:
 
 ```python
-import kitty
-
-@kitty.green_flag
-def start():
-    while not kitty.key_pressed("space"):
-        kitty.move(3)
-```
-
-### Work with a list
-
-```python
-import kitty
-
 names = ["Ada", "Lin", "Sam"]
 
-@kitty.green_flag
-def start():
-    for name in names:
-        kitty.say("Hello " + name)
-```
-
-### Make a second sprite
-
-Put separate sprites in separate files:
-
-```python
-# cat.py
-import kitty
-
-@kitty.green_flag
-def start():
-    kitty.say("I am Cat!")
+for name in names:
+    if name == "Ada":
+        continue
+    kitty.say("Hello " + name)
 ```
 
 ```python
-# mouse.py
-import kitty
+@kitty.number
+def double(value):
+    return value * 2
 
-@kitty.green_flag
-def start():
-    kitty.say("I am Mouse!")
+kitty.say(double(4))
 ```
 
-Compile both files together:
+## Language mapping
 
-```bash
-python comp.py cat.py mouse.py -o game.sb3
-```
+| Python syntax | Kitty behavior |
+| --- | --- |
+| `while True:` | Forever loop |
+| `break` | Exit the current loop |
+| `continue` | Skip to the next loop pass |
+| `for item in items:` | Iterate over a list or dictionary |
+| `for i in range(10):` | Repeat ten times |
+| `if` / `elif` / `else` | Conditional execution |
+| `def name(...):` | Named function or custom block |
+| `return value` | Return a number or text value |
 
-## Compile and open
+| Kitty API | Scratch operation |
+| --- | --- |
+| `kitty.move(10)` | Move ten steps |
+| `kitty.say("Hello")` | Say text |
+| `kitty.touching("edge")` | Edge sensing |
+| `kitty.broadcast("message")` | Broadcast a message |
+| `kitty.switch_costume("name")` | Switch costume |
+| `kitty.create_clone()` | Create a clone |
+
+## Compile
 
 ```bash
 python comp.py script.py
-python comp.py stage.py cat.py -o game.sb3
+python comp.py cat.py mouse.py -o game.sb3
 python comp.py folder/
 ```
 
-Each project needs at least one eligible `.py` file. One file creates
-`script.sb3` beside that file. Multiple files create `project.sb3` unless
-`-o` names an output. Kitty compiles only `.py` files directly inside a
-directory; it does not search subfolders.
+One source file produces an adjacent `.sb3` file. Multiple source files
+produce `project.sb3` by default. Use `-o` to select an output name. A
+directory compiles eligible `.py` files directly inside that directory.
 
-For complete instructions, see the [documentation](docs/README.md).
+## Documentation
 
-## Learn the language
-
-- Start with [Your first project](docs/getting-started.md).
-- Learn [scripts and green flags](docs/scripts.md).
-- Learn [choices and loops](docs/choices-and-loops.md).
-- Learn [lists](docs/lists.md), [dictionaries](docs/dictionaries.md), and
-  [functions](docs/functions.md).
-- See the [complete block reference](docs/reference.md).
-
-## Development
-
-Run the built-in compile and rejection tests:
-
-```bash
-python tests/run.py
-```
+- [Getting started](docs/getting-started.md)
+- [Python control flow](docs/choices-and-loops.md)
+- [Scripts and functions](docs/functions.md)
+- [Values, lists, and dictionaries](docs/values-and-math.md)
+- [Sprites and targets](docs/sprites.md)
+- [API reference](docs/reference.md)
+- [Limitations](docs/limitations.md)

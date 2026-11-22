@@ -1,15 +1,16 @@
 # Kitty documentation
 
-Kitty compiles Python source into a Scratch 3 `.sb3` project.
+Kitty provides Python syntax and a standard library of Scratch operations,
+then compiles a Scratch 3 `.sb3` project.
 
 ## Start here
 
-1. [Your first project](getting-started.md) — install, write, compile, and open.
-2. [Scripts and green flags](scripts.md) — where code starts.
-3. [Values and math](values-and-math.md) — scores, names, and operators.
-4. [Choices and loops](choices-and-loops.md) — make decisions and repeat work.
-5. [Scratch and Python side by side](scratch-and-python.md) — translate common Scratch blocks.
-6. [Limitations and troubleshooting](limitations.md) — know what Kitty does not support.
+1. [Getting started](getting-started.md)
+2. [Control flow](choices-and-loops.md)
+3. [Scripts and functions](scripts.md)
+4. [Values and math](values-and-math.md)
+5. [Scratch API migration reference](scratch-and-python.md)
+6. [Limitations and troubleshooting](limitations.md)
 
 ## Build bigger projects
 
@@ -36,6 +37,5 @@ Kitty compiles Python source into a Scratch 3 `.sb3` project.
 - [Messages](messages.md)
 - [Pen](pen.md)
 - [Costumes, sounds, and names](costumes-sounds-and-names.md)
-- [Documentation source and publishing](../WIKI.md)
 
 The README at the repository root is a quick project overview. These pages are the maintained documentation source and can be published to the GitHub Wiki.

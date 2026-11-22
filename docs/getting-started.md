@@ -1,8 +1,7 @@
-# Your first Kitty project
+# Getting started
 
-Kitty translates small pieces of Python-like code into Scratch 3 blocks.
-You write code in a `.py` file, then use the Kitty compiler to create a `.sb3`
-file. The `.sb3` file opens in Scratch.
+Create a Python source file, compile it with `comp.py`, and open the resulting
+`.sb3` file in Scratch.
 
 ## What you need
 
