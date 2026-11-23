@@ -817,12 +817,23 @@ _FIELD_LABELS = {
 }
 
 
+def main(source=None, folder=None):
+    if source is None:
+        import sys
+        if len(sys.argv) < 2:
+            print("usage: python decomp.py <file.sb3> [directory]", file=sys.stderr)
+            return 2
+        source = sys.argv[1]
+        folder = sys.argv[2] if len(sys.argv) > 2 else None
+    try:
+        print(decomp(source, folder))
+        return 0
+    except (FileNotFoundError, ValueError, zipfile.BadZipFile) as exc:
+        import sys
+        print(exc, file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
     import sys
-
-    if len(sys.argv) < 2:
-        print("usage: python decomp.py <file.sb3> [directory]", file=sys.stderr)
-        raise SystemExit(2)
-    source = sys.argv[1]
-    folder = sys.argv[2] if len(sys.argv) > 2 else None
-    print(decomp(source, folder))
+    raise SystemExit(main())

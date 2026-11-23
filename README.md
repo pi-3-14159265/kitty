@@ -88,6 +88,29 @@ that is a compile error.
 
 ## Compile
 
+### Install
+
+```bash
+pip install kitty-scratch
+```
+
+After installation, keep `import kitty` in source files and use the
+`kitty` command:
+
+```bash
+kitty build script.py
+kitty build cat.py mouse.py -o game.sb3
+kitty build folder/
+kitty compile game.py
+kitty comp game.py
+kitty decompile game.sb3
+py -m kitty build game.py
+```
+
+The `kitty-build` and `kitty-decomp` commands are also provided.
+
+For maintainers, see [Testing and publishing a release](docs/releasing.md).
+
 ```bash
 python comp.py script.py
 python comp.py cat.py mouse.py -o game.sb3

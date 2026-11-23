@@ -36,6 +36,8 @@ from __future__ import annotations
 
 from inspect import Parameter, Signature
 
+__version__ = "0.1.1"
+
 
 class _Required:
     """Marks a block input that the script must provide."""
@@ -401,3 +403,9 @@ for _name, _op in MATH.items():
         ))
 
 del _name, _spec_obj, _op, _bind_block_method
+
+
+if __name__ == "__main__":
+    from cli import main
+
+    raise SystemExit(main())

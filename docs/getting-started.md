@@ -9,6 +9,27 @@ Create a Python source file, compile it with `comp.py`, and open the resulting
 - A Scratch 3 account or Scratch 3 editor
 - The Kitty project folder
 
+## Install from PyPI
+
+```bash
+pip install kitty-scratch
+```
+
+The installed package provides three commands:
+
+```bash
+kitty build cat.py
+kitty build cat.py mouse.py -o game.sb3
+kitty decompile game.sb3
+kitty version
+kitty compile cat.py
+kitty comp cat.py
+py -m kitty build cat.py
+
+kitty-build cat.py
+kitty-decomp game.sb3
+```
+
 Kitty does not require third-party packages for compiled Scratch code.
 Supported imports are `kitty` and `math`; use `@ignore` for a
 Python-only helper that uses another library.

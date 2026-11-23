@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kitty-scratch"
+version = "0.1.1"
+description = "Compile Python syntax into Scratch 3 projects"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+kitty = "cli:main"
+kitty-build = "comp:main"
+kitty-decomp = "decomp:main"
+
+[tool.setuptools]
+py-modules = ["kitty", "comp", "decomp", "cli"]
+
+[tool.setuptools.data-files]
+"." = ["kitty.pyi"]
