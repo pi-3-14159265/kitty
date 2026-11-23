@@ -134,7 +134,8 @@ Open a new terminal only if you want to use the convenience commands:
 kitty version
 ```
 
-For maintainers, see [Testing and publishing a release](docs/releasing.md).
+For maintainers, see
+[Testing and publishing a release on GitHub](https://github.com/pi-3-14159265/kitty/blob/main/docs/releasing.md).
 
 Documentation is maintained on the
 [GitHub Kitty Wiki](https://github.com/pi-3-14159265/kitty/wiki).
@@ -150,13 +151,13 @@ directory compiles eligible `.py` files directly inside that directory.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md)
-- [Python control flow](docs/choices-and-loops.md)
-- [Scripts and functions](docs/functions.md)
-- [Values, lists, and dictionaries](docs/values-and-math.md)
-- [Sprites and targets](docs/sprites.md)
-- [API reference](docs/reference.md)
-- [Limitations](docs/limitations.md)
+- [Getting started](https://github.com/pi-3-14159265/kitty/wiki/getting-started)
+- [Python control flow](https://github.com/pi-3-14159265/kitty/wiki/choices-and-loops)
+- [Scripts and functions](https://github.com/pi-3-14159265/kitty/wiki/functions)
+- [Values, lists, and dictionaries](https://github.com/pi-3-14159265/kitty/wiki/values-and-math)
+- [Sprites and targets](https://github.com/pi-3-14159265/kitty/wiki/sprites)
+- [API reference](https://github.com/pi-3-14159265/kitty/wiki/reference)
+- [Limitations](https://github.com/pi-3-14159265/kitty/wiki/limitations)
 
 Project and maintainer links:
 
