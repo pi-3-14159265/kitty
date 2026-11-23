@@ -321,6 +321,9 @@ _export("sprite", "Put the following function's scripts on a sprite.", Signature
 _export("stage", "Put the following scripts on the stage.", Signature([
     Parameter("fn", Parameter.POSITIONAL_OR_KEYWORD, default=None),
 ]))
+_export("ignore", "Skip this Python-only function. It is not compiled into Scratch.", Signature([
+    Parameter("fn", Parameter.POSITIONAL_OR_KEYWORD, default=None),
+]))
 _export("variable", "Declare a Scratch variable.", Signature([
     Parameter("name", Parameter.POSITIONAL_OR_KEYWORD),
     Parameter("value", Parameter.POSITIONAL_OR_KEYWORD, default=0),

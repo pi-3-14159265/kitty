@@ -341,19 +341,21 @@ _OF_PROPERTIES = {
 }
 
 
-def comp(scripts, output=None):
+def comp(scripts, output=None, warnings=None):
     """Compile one or more kitty Python scripts into an .sb3 file.
 
     scripts: a path, or a list of paths. A directory adds every .py file in it.
     output: the .sb3 to write. Defaults to the first script's name with a .sb3 suffix.
+    warnings: optional list that receives non-fatal import warnings.
     Returns the output path.
     """
+    warnings = [] if warnings is None else warnings
     paths = _script_paths(scripts)
     if not paths:
         raise CompileError("no Python scripts to compile")
     destination = Path(output) if output else _default_output(paths)
     project = Project()
-    classes, units = _load_program(paths)
+    classes, units = _load_program(paths, warnings)
     instances = _program_instances(classes, units)
     stage = None
     sprites = []
@@ -477,7 +479,7 @@ def _compile_file(path, project, body=None):
     return targets
 
 
-def _load_program(paths):
+def _load_program(paths, warnings=None):
     parsed = []
     class_nodes = {}
     for path in paths:
@@ -509,7 +511,7 @@ def _load_program(paths):
         _fill_class(cls)
     units = []
     for path, tree in parsed:
-        aliases, imported, math_aliases, math_names = _module_imports(tree, path)
+        aliases, imported, math_aliases, math_names = _module_imports(tree, path, warnings)
         loose = []
         decls = []
         file_classes = []
@@ -712,13 +714,29 @@ def _is_file_declaration(stmt, aliases, imported):
     return value is not _NOT_CONSTANT and not isinstance(value, bool)
 
 
-def _module_imports(tree, path):
+def _module_imports(tree, path, warnings=None):
     aliases = {"kitty"}
     imported = set()
     math_aliases = set()
     math_names = {}
     for stmt in tree.body:
-        _note_import(stmt, path, aliases, imported, math_aliases, math_names)
+        _note_import(stmt, path, aliases, imported, math_aliases, math_names, warnings)
+    if warnings is not None:
+        for stmt in ast.walk(tree):
+            if not isinstance(stmt, ast.FunctionDef) or not _is_ignored_function(stmt):
+                continue
+            for nested in ast.walk(stmt):
+                if isinstance(nested, ast.Import):
+                    for alias in nested.names:
+                        if alias.name not in {"kitty", "math"}:
+                            message = f"{path}:{nested.lineno}: {alias.name} imported and cannot be compiled"
+                            if message not in warnings:
+                                warnings.append(message)
+                elif isinstance(nested, ast.ImportFrom):
+                    if nested.module not in {"kitty", "math"}:
+                        message = f"{path}:{nested.lineno}: {nested.module} imported and cannot be compiled"
+                        if message not in warnings:
+                            warnings.append(message)
     return aliases, imported, math_aliases, math_names
 
 
@@ -739,7 +757,7 @@ _MATH_FUNCS = {
 }
 
 
-def _note_import(stmt, path, aliases, imported, math_aliases, math_names):
+def _note_import(stmt, path, aliases, imported, math_aliases, math_names, warnings=None):
     if isinstance(stmt, ast.Import):
         for alias in stmt.names:
             if alias.name == "kitty":
@@ -747,7 +765,10 @@ def _note_import(stmt, path, aliases, imported, math_aliases, math_names):
             elif alias.name == "math":
                 math_aliases.add(alias.asname or "math")
             else:
-                raise CompileError(f"{path}:{stmt.lineno}: only kitty and math can be imported in a Scratch script")
+                if warnings is not None:
+                    message = f"{path}:{stmt.lineno}: {alias.name} imported and cannot be compiled"
+                    if message not in warnings:
+                        warnings.append(message)
         return
     if isinstance(stmt, ast.ImportFrom):
         if stmt.module == "kitty":
@@ -760,7 +781,10 @@ def _note_import(stmt, path, aliases, imported, math_aliases, math_names):
                     raise CompileError(f"{path}:{stmt.lineno}: math.{alias.name} has no Scratch block")
                 math_names[alias.asname or alias.name] = _MATH_FUNCS[alias.name]
             return
-        raise CompileError(f"{path}:{stmt.lineno}: only kitty and math can be imported in a Scratch script")
+        if warnings is not None:
+            message = f"{path}:{stmt.lineno}: {stmt.module} imported and cannot be compiled"
+            if message not in warnings:
+                warnings.append(message)
 
 
 def _signature(label, params):
@@ -937,6 +961,16 @@ def _is_target_function(stmt):
     return name in {"sprite", "stage"}
 
 
+def _is_ignored_function(fn):
+    if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    for decorator in fn.decorator_list:
+        name = _decorator_name(decorator)
+        if name == "ignore":
+            return True
+    return False
+
+
 def _target_decorator(fn, path):
     if len(fn.decorator_list) != 1:
         raise CompileError(f"{path}:{fn.lineno}: a sprite function takes one decorator")
@@ -987,6 +1021,7 @@ class Target:
         self.path = path
         self.blocks = {}
         self.symbols = {}
+        self.ignored_names = set()
         self.scratch_vars = {}
         self.scratch_lists = {}
         self.local_vars = {}
@@ -1081,6 +1116,9 @@ class Target:
             finally:
                 self.super_class = previous
         for fn in self.blueprint.method_order:
+            if _is_ignored_function(fn):
+                self.ignored_names.add(fn.name)
+                continue
             previous = self.super_class
             self.super_class = _method_owner(self.blueprint, fn)
             try:
@@ -1285,6 +1323,11 @@ class Target:
             if isinstance(stmt, ast.ClassDef):
                 self._error(stmt, "classes must inherit kitty.Sprite or kitty.Stage")
             if isinstance(stmt, ast.FunctionDef):
+                if _is_ignored_function(stmt):
+                    self._flush_script(buffer)
+                    buffer = []
+                    self.ignored_names.add(stmt.name)
+                    continue
                 self._flush_script(buffer)
                 buffer = []
                 self._compile_function(stmt)
@@ -2174,7 +2217,9 @@ class Target:
     def _collect_procedures(self, rest):
         procs = []
         for stmt in rest:
-            if isinstance(stmt, ast.FunctionDef) and self._function_kind(stmt)[0] == "block":
+            if isinstance(stmt, ast.FunctionDef) and _is_ignored_function(stmt):
+                self.ignored_names.add(stmt.name)
+            elif isinstance(stmt, ast.FunctionDef) and self._function_kind(stmt)[0] == "block":
                 procs.append(self._register_proc(stmt, defer_results=True))
         for proc in procs:
             if proc.returns:
@@ -2192,6 +2237,9 @@ class Target:
         self._place(hat)
 
     def _compile_function(self, fn):
+        if _is_ignored_function(fn):
+            self.ignored_names.add(fn.name)
+            return
         kind, info = self._function_kind(fn)
         if kind == "block":
             self._compile_proc_body(fn)
@@ -2221,6 +2269,8 @@ class Target:
         self._place(hat)
 
     def _function_kind(self, fn):
+        if _is_ignored_function(fn):
+            return "ignored", {}
         if not fn.decorator_list:
             if _contains_return(fn.body):
                 kind = "boolean" if _returns_boolean(fn) else "number"
@@ -3183,6 +3233,15 @@ class Target:
     def _compile_stack(self, expr):
         if not isinstance(expr, ast.Call):
             self._error(expr, "a script statement must be a kitty block or a custom block")
+        if isinstance(expr.func, ast.Name) and expr.func.id in self.ignored_names:
+            self._error(expr, f"ignored function {expr.func.id} cannot be called from compiled Scratch code")
+        if (
+            isinstance(expr.func, ast.Attribute)
+            and expr.func.attr in self.ignored_names
+            and isinstance(expr.func.value, ast.Name)
+            and expr.func.value.id == "self"
+        ):
+            self._error(expr, f"ignored function {expr.func.attr} cannot be called from compiled Scratch code")
         if self._math_operator(expr.func) is not None:
             self._error(expr, "a math function is a value. Use it in say, set, or other blocks")
         collected = self._collection_statement(expr)
@@ -3550,6 +3609,15 @@ class Target:
         return hoisted + stored
 
     def _compile_call_expr(self, call):
+        if isinstance(call.func, ast.Name) and call.func.id in self.ignored_names:
+            self._error(call, f"ignored function {call.func.id} cannot be called from compiled Scratch code")
+        if (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr in self.ignored_names
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "self"
+        ):
+            self._error(call, f"ignored function {call.func.attr} cannot be called from compiled Scratch code")
         if isinstance(call.func, ast.Name) and call.func.id == ".kwkey":
             return self._kw_key_at(self.current_proc.kw if self.current_proc else None, call)
         if isinstance(call.func, ast.Lambda):
@@ -7138,11 +7206,14 @@ def main(argv=None):
     parser.add_argument("scripts", nargs="+", help="Python scripts or a directory of them. stage.py becomes the stage")
     parser.add_argument("-o", "--output", help="output .sb3 path")
     args = parser.parse_args(argv)
+    warnings = []
     try:
-        destination = comp(args.scripts, args.output)
+        destination = comp(args.scripts, args.output, warnings)
     except CompileError as exc:
         print(exc, file=sys.stderr)
         return 1
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
     print(destination)
     return 0
 

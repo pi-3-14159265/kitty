@@ -28,6 +28,16 @@ TMP = ROOT / "tests" / "_reject"
 # Each snippet must fail to compile, and the message must contain the text.
 REJECTS = [
     (
+        "ignored call",
+        "ignored function",
+        "import numpy\n\n@ignore\ndef numpyFunc():\n    numpy.mean([1, 2])\n\nnumpyFunc()\n",
+    ),
+    (
+        "ignored call in hat",
+        "ignored function",
+        "import numpy\n\n@ignore\ndef numpyFunc():\n    numpy.mean([1, 2])\n\n@kitty.green_flag\ndef start():\n    numpyFunc()\n",
+    ),
+    (
         "ragged",
         "rectangular",
         "grid = [[1, 2], [3]]\n",
@@ -154,6 +164,33 @@ def green_flags(sb3):
     return vm, counts
 
 
+def compile_ignored():
+    failures = []
+    if TMP.exists():
+        shutil.rmtree(TMP)
+    TMP.mkdir()
+    folder = TMP / "ignored"
+    folder.mkdir()
+    cases = [
+        "import numpy\n\n@ignore\ndef numpyFunc():\n    return numpy.mean([1, 2])\n",
+        "import numpy\n\n@ignore()\ndef numpyFunc():\n    return numpy.mean([1, 2])\n",
+        "import kitty\nimport numpy\n\n@kitty.ignore\ndef numpyFunc():\n    return numpy.mean([1, 2])\n",
+    ]
+    for number, source in enumerate(cases):
+        script = folder / f"case{number}.py"
+        script.write_text(source, encoding="utf-8")
+        output = folder / f"case{number}.sb3"
+        warnings = []
+        try:
+            comp(script, output, warnings)
+            if not any("numpy imported and cannot be compiled" in warning for warning in warnings):
+                failures.append(f"ignored case {number}: missing numpy import warning")
+        except CompileError as exc:
+            failures.append(f"ignored case {number}: {exc}")
+    shutil.rmtree(TMP, ignore_errors=True)
+    return failures
+
+
 def compile_rejects():
     failures = []
     if TMP.exists():
@@ -201,6 +238,7 @@ def main():
             problems.append("scratch-parser rejected suite.sb3")
     else:
         print("scratch-parser not found; skipped")
+    problems.extend(compile_ignored())
     problems.extend(compile_rejects())
     if problems:
         print("FAILED")

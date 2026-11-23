@@ -9,8 +9,9 @@ Create a Python source file, compile it with `comp.py`, and open the resulting
 - A Scratch 3 account or Scratch 3 editor
 - The Kitty project folder
 
-Kitty does not need extra Python packages. Do not install third-party
-libraries for a Kitty project: Kitty allows only `kitty` and `math` imports.
+Kitty does not require third-party packages for compiled Scratch code.
+Supported imports are `kitty` and `math`; use `@ignore` for a
+Python-only helper that uses another library.
 
 ## Step 1: create `cat.py`
 
@@ -114,7 +115,18 @@ score = 0
 kitty.say(score)
 ```
 
-### The program says only kitty and math can be imported
+### The program reports that a Python import cannot be compiled
 
-Kitty does not run ordinary third-party Python packages. Keep imports to
-`kitty` and `math`, or use `from math import sin`.
+Keep `kitty` and `math` imports in compiled code. Put code that uses another
+library in an ignored Python-only function:
+
+```python
+import numpy
+
+@ignore
+def numpyFunc():
+    return numpy.mean([1, 2])
+```
+
+Kitty warns that `numpy` cannot be compiled. The function is omitted from the
+Scratch project and must not be called from the compiled part of the script.

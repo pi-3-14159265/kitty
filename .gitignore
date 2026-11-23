@@ -23,3 +23,6 @@ Thumbs.db
 # Local Wiki publishing tools
 WIKI.md
 scripts/
+
+# Private agent context and implementation knowledge
+AGENTS.md

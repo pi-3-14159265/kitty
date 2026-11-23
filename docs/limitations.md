@@ -5,7 +5,7 @@ lists the limits that matter most.
 
 ## Imports
 
-Only `kitty` and `math` can be imported:
+Supported compiled imports are `kitty` and `math`:
 
 ```python
 import kitty
@@ -13,7 +13,15 @@ import math
 from math import sin
 ```
 
-Other modules are rejected, including third-party packages.
+Third-party modules are allowed only inside `@ignore` Python-only
+functions. A third-party import produces a compile warning:
+
+```text
+warning: numpy imported and cannot be compiled
+```
+
+An ignored function is omitted from the Scratch project. It must not be called
+from code that Kitty translates into a Scratch script, or compilation fails.
 
 ## Python values
 

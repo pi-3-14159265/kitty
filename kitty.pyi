@@ -178,6 +178,16 @@ def stage(fn: F) -> F:
     """Put this function's scripts on the stage. A project can have only one stage."""
     ...
 
+@overload
+def ignore(fn: F) -> F:
+    """Skip this Python-only function. It is not compiled into Scratch."""
+    ...
+
+@overload
+def ignore() -> Callable[[F], F]:
+    """Skip this Python-only function. It is not compiled into Scratch."""
+    ...
+
 def move(steps: Value) -> None:
     """Move the sprite by a number of steps.
 

@@ -69,6 +69,23 @@ kitty.say(double(4))
 | `kitty.switch_costume("name")` | Switch costume |
 | `kitty.create_clone()` | Create a clone |
 
+## Python-only helpers
+
+Use `@ignore` for code that Python libraries provide but Kitty
+cannot compile into Scratch:
+
+```python
+import numpy
+
+@ignore
+def average(values):
+    return numpy.mean(values)
+```
+
+Kitty emits a warning that `numpy` cannot be compiled and omits the function
+from the `.sb3`. Do not call an ignored function from code that runs in Scratch;
+that is a compile error.
+
 ## Compile
 
 ```bash
