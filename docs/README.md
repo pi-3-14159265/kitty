@@ -40,3 +40,9 @@ then compiles a Scratch 3 `.sb3` project.
 - [Costumes, sounds, and names](costumes-sounds-and-names.md)
 
 The README at the repository root is a quick project overview. These pages are the maintained documentation source and can be published to the GitHub Wiki.
+
+Public project links:
+
+- [GitHub repository](https://github.com/pi-3-14159265/kitty)
+- [GitHub Wiki](https://github.com/pi-3-14159265/kitty/wiki)
+- [Issue tracker](https://github.com/pi-3-14159265/kitty/issues)

@@ -2,8 +2,8 @@
 
 Scripts are not run by Python. Compile them:
 
-    python comp.py script.py
-    python comp.py stage.py cat.py -o game.sb3
+    py -m kitty build script.py
+    py -m kitty build stage.py cat.py -o game.sb3
 
 A call such as kitty.say("Hello world!") becomes the Scratch block
 say [Hello world!]. Statements at the top of a file run when the green
@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from inspect import Parameter, Signature
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 
 class _Required:
@@ -81,7 +81,7 @@ def _spec(opcode, shape, params, doc, extension=None, fixed_fields=()):
 
 def _compile_only(*_args, **_kwargs):
     raise RuntimeError(
-        "kitty scripts are compiled into Scratch. Run: python comp.py your_script.py"
+        "kitty scripts are compiled into Scratch. Run: py -m kitty build your_script.py"
     )
 
 

@@ -4,11 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kitty-scratch"
-version = "0.1.1"
+version = "0.1.2"
 description = "Compile Python syntax into Scratch 3 projects"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
+authors = [
+  { name = "Thayaden Pi", email = "thayaden_pi@proton.me" },
+]
+
+[project.urls]
+Documentation = "https://github.com/pi-3-14159265/kitty/wiki"
+Repository = "https://github.com/pi-3-14159265/kitty"
+Issues = "https://github.com/pi-3-14159265/kitty/issues"
 
 [project.scripts]
 kitty = "cli:main"

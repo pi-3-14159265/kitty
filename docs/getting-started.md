@@ -15,19 +15,52 @@ Create a Python source file, compile it with `comp.py`, and open the resulting
 pip install kitty-scratch
 ```
 
-The installed package provides three commands:
+The installed package supports Python module commands and convenience commands:
+
+```bash
+py -m kitty build cat.py
+py -m kitty build cat.py mouse.py -o game.sb3
+py -m kitty decompile game.sb3
+py -m kitty version
+py -m kitty compile cat.py
+py -m kitty comp cat.py
+```
+
+After the optional Windows launch shims are created, these convenience forms
+are also available:
 
 ```bash
 kitty build cat.py
-kitty build cat.py mouse.py -o game.sb3
-kitty decompile game.sb3
-kitty version
 kitty compile cat.py
 kitty comp cat.py
-py -m kitty build cat.py
-
+kitty decompile game.sb3
+kitty version
 kitty-build cat.py
 kitty-decomp game.sb3
+```
+
+### Windows
+
+The first Kitty CLI invocation creates `kitty`, `kitty-build`, and
+`kitty-decomp` command shims in WindowsApps. No manual `PATH` setup is needed.
+
+If the package is installed and no launcher has run yet:
+
+```powershell
+py -m kitty version
+```
+
+Open a new terminal. Both forms are available:
+
+```powershell
+py -m kitty comp tests/project
+```
+
+On Windows, the convenience form is also available after the launch shim
+exists:
+
+```powershell
+kitty comp tests/project
 ```
 
 Kitty does not require third-party packages for compiled Scratch code.
@@ -52,7 +85,7 @@ def start():
 Run this command in a terminal opened in the Kitty folder:
 
 ```bash
-python comp.py cat.py
+py -m kitty build cat.py
 ```
 
 On success, Kitty prints the output path and creates `cat.sb3` beside
@@ -83,10 +116,10 @@ sprite variable. A function that only reads `score` does not need `global`.
 ## Compile one or more files
 
 ```bash
-python comp.py script.py
-python comp.py cat.py mouse.py
-python comp.py cat.py mouse.py -o game.sb3
-python comp.py folder/
+py -m kitty build script.py
+py -m kitty build cat.py mouse.py
+py -m kitty build cat.py mouse.py -o game.sb3
+py -m kitty build folder/
 ```
 
 - One script: output is `<script-name>.sb3` beside that script.
@@ -104,8 +137,8 @@ An existing output file is replaced.
 ## Turn a Scratch project back into text
 
 ```bash
-python decomp.py game.sb3
-python decomp.py game.sb3 output_folder
+py -m kitty decompile game.sb3
+py -m kitty decompile game.sb3 output_folder
 ```
 
 The decompiler expects a Scratch `.sb3` ZIP file containing `project.json`.

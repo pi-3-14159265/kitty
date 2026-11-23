@@ -9,6 +9,7 @@ and wait until it says failed 0. A failure says FAIL and a short name.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from comp import CompileError, comp
+import cli
 
 SUITE = ROOT / "tests" / "suite.sb3"
 PROJECT = ROOT / "tests" / "project"
@@ -164,6 +166,35 @@ def green_flags(sb3):
     return vm, counts
 
 
+def compile_cli_aliases():
+    failures = []
+    if os.name == "nt":
+        cli._ensure_windows_launchers()
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            launcher_dir = Path(local_app_data) / "Microsoft" / "WindowsApps"
+            for name in ("kitty.cmd", "kitty-build.cmd", "kitty-decomp.cmd"):
+                if not (launcher_dir / name).is_file():
+                    failures.append(f"{name}: Windows launcher was not created")
+    if TMP.exists():
+        shutil.rmtree(TMP)
+    TMP.mkdir()
+    script = TMP / "game.py"
+    script.write_text(
+        "import kitty\n@kitty.green_flag\ndef start():\n    kitty.say(\"alias\")\n",
+        encoding="utf-8",
+    )
+    for alias in ("build", "compile", "comp"):
+        output = TMP / f"{alias}.sb3"
+        code = cli.main([alias, str(script), "-o", str(output)])
+        if code != 0:
+            failures.append(f"{alias}: CLI returned {code}")
+        elif not output.is_file():
+            failures.append(f"{alias}: output was not created")
+    shutil.rmtree(TMP, ignore_errors=True)
+    return failures
+
+
 def compile_ignored():
     failures = []
     if TMP.exists():
@@ -238,6 +269,7 @@ def main():
             problems.append("scratch-parser rejected suite.sb3")
     else:
         print("scratch-parser not found; skipped")
+    problems.extend(compile_cli_aliases())
     problems.extend(compile_ignored())
     problems.extend(compile_rejects())
     if problems:

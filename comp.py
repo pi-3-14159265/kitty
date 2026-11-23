@@ -1,7 +1,7 @@
 """Compile kitty Python scripts into a Scratch .sb3 file.
 
-    python comp.py script.py
-    python comp.py stage.py cat.py -o game.sb3
+    py -m kitty build script.py
+    py -m kitty build stage.py cat.py -o game.sb3
 
 Each file becomes a sprite. A file named stage.py, or a function decorated
 with @kitty.stage, becomes the stage. Top-level statements run when the green

@@ -33,13 +33,31 @@ python -m twine check dist/*
 
 This creates one wheel and one source distribution in `dist/`.
 
+## Windows signing
+
+The package is published by **Thayaden Pi**
+(`thayaden_pi@proton.me`) and is identified in package metadata. The
+`0.1.2` wheel and `.cmd` launch shims are not automatically Authenticode
+signed by the build process.
+
+Before a Windows installer or signed executable is distributed:
+
+1. Obtain a code-signing certificate.
+2. Sign the exact executable or installer artifacts with Windows
+   Authenticode.
+3. Sign the source tag or release checksums in
+   [GitHub Releases](https://github.com/pi-3-14159265/kitty/releases).
+4. Verify signatures with `Get-AuthenticodeSignature` before upload.
+5. Do not claim the plain `.cmd` shims are signed; sign the real executable
+   or installer that contains them.
+
 ## 4. Test the wheel locally
 
 ```powershell
 python -m venv .venv-release
 .\.venv-release\Scripts\Activate.ps1
-python -m pip install --force-reinstall dist\kitty_scratch-0.1.1-py3-none-any.whl
-kitty version
+python -m pip install --force-reinstall dist\kitty_scratch-0.1.2-py3-none-any.whl
+py -m kitty version
 ```
 
 Create a sample project and compile it:
@@ -53,7 +71,7 @@ def start():
     kitty.say("Package test")
 "@ | Set-Content -Encoding utf8 test_package.py
 
-kitty build test_package.py
+py -m kitty build test_package.py
 ```
 
 Then deactivate:
@@ -76,6 +94,34 @@ Upload the same artifacts:
 python -m twine upload --repository testpypi dist/*
 ```
 
+## Re-uploading a release
+
+Package indexes do not allow replacing an already published file.
+
+If Twine failed before the upload completed and no `0.1.2` release appears on
+TestPyPI, it is safe to retry the exact same artifacts:
+
+```powershell
+python -m twine upload --repository testpypi --skip-existing dist/*
+```
+
+`--skip-existing` skips files that TestPyPI already has. It does not modify or
+replace any published file.
+
+If TestPyPI reports that `kitty-scratch 0.1.2` is already published and the
+package needs a correction, do not use the same version. Update both version
+values, rebuild a new clean `dist/`, and continue with the next version:
+
+```powershell
+Remove-Item -Recurse -Force dist, build, *.egg-info -ErrorAction SilentlyContinue
+python -m build
+python -m twine check dist/*
+python -m twine upload --repository testpypi dist/*
+```
+
+PyPI is also immutable for a published version. A published `0.1.2` on PyPI
+cannot be overwritten. Release the corrected package as `0.1.3`.
+
 Twine may ask for a username and password. For TestPyPI, use `__token__` as
 the username and paste the API token as the password.
 
@@ -89,9 +135,9 @@ so a direct isolated install is enough:
 ```powershell
 python -m venv .venv-testpypi
 .\.venv-testpypi\Scripts\Activate.ps1
-python -m pip install --index-url https://test.pypi.org/simple/ --no-deps kitty-scratch==0.1.1
-kitty version
-kitty build test_package.py
+python -m pip install --index-url https://test.pypi.org/simple/ --no-deps kitty-scratch==0.1.2
+py -m kitty version
+py -m kitty build test_package.py
 deactivate
 ```
 
@@ -121,8 +167,8 @@ instead.
 ```powershell
 python -m venv .venv-pypi
 .\.venv-pypi\Scripts\Activate.ps1
-python -m pip install kitty-scratch==0.1.1
-kitty version
-kitty build test_package.py
+python -m pip install kitty-scratch==0.1.2
+py -m kitty version
+py -m kitty build test_package.py
 deactivate
 ```

@@ -95,26 +95,53 @@ pip install kitty-scratch
 ```
 
 After installation, keep `import kitty` in source files and use the
-`kitty` command:
+Python module first:
 
 ```bash
-kitty build script.py
-kitty build cat.py mouse.py -o game.sb3
-kitty build folder/
-kitty compile game.py
-kitty comp game.py
-kitty decompile game.sb3
-py -m kitty build game.py
+py -m kitty build script.py
+py -m kitty build cat.py mouse.py -o game.sb3
+py -m kitty build folder/
+py -m kitty compile game.py
+py -m kitty comp game.py
+py -m kitty decompile game.sb3
 ```
 
-The `kitty-build` and `kitty-decomp` commands are also provided.
+`kitty build`, `kitty compile`, `kitty comp`, and `kitty decompile` are also
+available as convenience commands after Windows creates their launch shims.
+
+On systems where `py` is unavailable, use `python -m kitty` instead.
+
+### Windows launcher setup
+
+The first Kitty CLI invocation automatically creates Windows command shims in
+`%LOCALAPPDATA%\Microsoft\WindowsApps`:
+
+- `kitty`
+- `kitty-build`
+- `kitty-decomp`
+
+No Python `Scripts` directory or manual `PATH` edit is required. Open a new
+terminal and verify:
+
+```powershell
+py -m kitty --help
+py -m kitty comp tests/project
+```
+
+Open a new terminal only if you want to use the convenience commands:
+
+```powershell
+kitty version
+```
 
 For maintainers, see [Testing and publishing a release](docs/releasing.md).
 
+Documentation is maintained on the
+[GitHub Kitty Wiki](https://github.com/pi-3-14159265/kitty/wiki).
+
 ```bash
-python comp.py script.py
-python comp.py cat.py mouse.py -o game.sb3
-python comp.py folder/
+py -m kitty build cat.py mouse.py -o game.sb3
+py -m kitty build folder/
 ```
 
 One source file produces an adjacent `.sb3` file. Multiple source files
@@ -130,3 +157,10 @@ directory compiles eligible `.py` files directly inside that directory.
 - [Sprites and targets](docs/sprites.md)
 - [API reference](docs/reference.md)
 - [Limitations](docs/limitations.md)
+
+Project and maintainer links:
+
+- [GitHub repository](https://github.com/pi-3-14159265/kitty)
+- [GitHub documentation Wiki](https://github.com/pi-3-14159265/kitty/wiki)
+- [Issue tracker](https://github.com/pi-3-14159265/kitty/issues)
+- Maintainer: [Thayaden Pi](mailto:thayaden_pi@proton.me)
