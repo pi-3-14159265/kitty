@@ -145,7 +145,7 @@ file, Kitty instead uses `game_decompiled/`.
 
 ## Common first mistakes
 
-### I get “no Python scripts”
+### I get "no Python scripts"
 
 Check that the folder has a `.py` file directly inside it. Kitty does not scan
 nested folders.
