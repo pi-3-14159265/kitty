@@ -45,7 +45,7 @@ beside that script.
 Use `-o` to choose an output name:
 
 ```bash
-py -m kitty build cat.py mouse.py -o game.sb3
+kitty build cat.py mouse.py -o game.sb3
 ```
 
 A directory scan is not recursive.

@@ -4,6 +4,7 @@ An .sb3 file is a zip archive. The program lives in project.json as a graph of
 blocks. Running this module from the command line writes one folder per stage
 or sprite, with that target's script next to its costumes and sounds.
 
+    kitty decompile Fishing.sb3
     py -m kitty decompile Fishing.sb3
     py -m kitty decompile Fishing.sb3 output_folder
 """

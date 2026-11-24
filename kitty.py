@@ -2,6 +2,7 @@
 
 Scripts are not run by Python. Compile them:
 
+    kitty build script.py
     py -m kitty build script.py
     py -m kitty build stage.py cat.py -o game.sb3
 

@@ -94,22 +94,24 @@ that is a compile error.
 pip install kitty-scratch
 ```
 
-After installation, keep `import kitty` in source files and use the
-Python module first:
+After installation, keep `import kitty` in source files. Use the standalone
+`kitty` command first:
+
+```bash
+kitty build script.py
+kitty build cat.py mouse.py -o game.sb3
+kitty build folder/
+kitty compile game.py
+kitty comp game.py
+kitty decompile game.sb3
+```
+
+If `kitty` is unavailable or Windows blocks the convenience command, use:
 
 ```bash
 py -m kitty build script.py
-py -m kitty build cat.py mouse.py -o game.sb3
-py -m kitty build folder/
-py -m kitty compile game.py
-py -m kitty comp game.py
-py -m kitty decompile game.sb3
+python -m kitty build script.py
 ```
-
-`kitty build`, `kitty compile`, `kitty comp`, and `kitty decompile` are also
-available as convenience commands after Windows creates their launch shims.
-
-On systems where `py` is unavailable, use `python -m kitty` instead.
 
 ### Windows launcher setup
 
@@ -124,15 +126,12 @@ No Python `Scripts` directory or manual `PATH` edit is required. Open a new
 terminal and verify:
 
 ```powershell
-py -m kitty --help
-py -m kitty comp tests/project
+kitty --help
+kitty comp tests/project
 ```
 
-Open a new terminal only if you want to use the convenience commands:
-
-```powershell
-kitty version
-```
+If the standalone command is not recognized, use `py -m kitty comp tests/project`
+or `python -m kitty comp tests/project` instead.
 
 For maintainers, see
 [Testing and publishing a release on GitHub](https://github.com/pi-3-14159265/kitty/blob/main/docs/releasing.md).
@@ -141,8 +140,8 @@ Documentation is maintained on the
 [GitHub Kitty Wiki](https://github.com/pi-3-14159265/kitty/wiki).
 
 ```bash
-py -m kitty build cat.py mouse.py -o game.sb3
-py -m kitty build folder/
+kitty build cat.py mouse.py -o game.sb3
+kitty build folder/
 ```
 
 One source file produces an adjacent `.sb3` file. Multiple source files

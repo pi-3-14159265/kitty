@@ -1,5 +1,6 @@
 """Compile kitty Python scripts into a Scratch .sb3 file.
 
+    kitty build script.py
     py -m kitty build script.py
     py -m kitty build stage.py cat.py -o game.sb3
 

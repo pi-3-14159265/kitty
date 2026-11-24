@@ -57,7 +57,7 @@ Before a Windows installer or signed executable is distributed:
 python -m venv .venv-release
 .\.venv-release\Scripts\Activate.ps1
 python -m pip install --force-reinstall dist\kitty_scratch-0.1.2-py3-none-any.whl
-py -m kitty version
+kitty version
 ```
 
 Create a sample project and compile it:
@@ -71,7 +71,7 @@ def start():
     kitty.say("Package test")
 "@ | Set-Content -Encoding utf8 test_package.py
 
-py -m kitty build test_package.py
+kitty build test_package.py
 ```
 
 Then deactivate:
@@ -136,8 +136,8 @@ so a direct isolated install is enough:
 python -m venv .venv-testpypi
 .\.venv-testpypi\Scripts\Activate.ps1
 python -m pip install --index-url https://test.pypi.org/simple/ --no-deps kitty-scratch==0.1.2
-py -m kitty version
-py -m kitty build test_package.py
+kitty version
+kitty build test_package.py
 deactivate
 ```
 
@@ -168,7 +168,7 @@ instead.
 python -m venv .venv-pypi
 .\.venv-pypi\Scripts\Activate.ps1
 python -m pip install kitty-scratch==0.1.2
-py -m kitty version
-py -m kitty build test_package.py
+kitty version
+kitty build test_package.py
 deactivate
 ```
