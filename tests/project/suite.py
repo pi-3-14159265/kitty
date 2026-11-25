@@ -23,6 +23,7 @@ pristine = [4, 5, 6]
 box = [1, 2]
 got_message = 0
 clones = kitty.variable("clones", 0, shared=True)
+polls = 0
 
 
 def expect(name, ok: bool):
@@ -107,8 +108,20 @@ def run_values():
     expect("fstr", f"n={3}" == "n=3")
 
 
+def counted(n):
+    global polls
+    polls += 1
+    return n < 3
+
+
+def ready():
+    global polls
+    polls += 1
+    return polls > 2
+
+
 def run_loops():
-    global area
+    global area, polls
     area = "loops"
     i = 5
     for i in range(0):
@@ -157,6 +170,35 @@ def run_loops():
     with kitty.if_(1 < 2):
         n = 1
     expect("with if", n == 1)
+    # A loop test that runs blocks first (in, a custom block call) is worked
+    # out again on every pass. The n bound stops a regression from hanging.
+    found = ["a"]
+    n = 0
+    while "z" not in found and n < 5:
+        found.append("z")
+        n += 1
+    expect("while in", n == 1)
+    n = 8
+    while not big(n) and n < 20:
+        n += 1
+    expect("while call", n == 11)
+    found = ["a"]
+    n = 0
+    with kitty.repeat_until("z" in found or n > 4):
+        found.append("z")
+        n += 1
+    expect("until in", n == 1)
+    polls = 0
+    n = 0
+    while counted(n):
+        n += 1
+        if n == 2:
+            break
+    expect("break skips test", polls == 2)
+    polls = 0
+    start = kitty.timer()
+    kitty.wait_until(ready() or kitty.timer() > start + 1)
+    expect("wait call", polls == 3)
 
 
 def run_text():

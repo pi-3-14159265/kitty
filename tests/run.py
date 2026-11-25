@@ -222,6 +222,97 @@ def compile_ignored():
     return failures
 
 
+# Each loop test runs blocks before it can be read. Those blocks must run
+# again inside the loop, or the loop keeps reading its first answer.
+LOOP_TESTS = [
+    (
+        "while in",
+        'import kitty\nitems = ["a"]\n\n@kitty.green_flag\ndef start():\n'
+        '    while "z" not in items:\n        items.append("z")\n',
+    ),
+    (
+        "while call",
+        "import kitty\nn = 0\n\ndef big(v):\n    return v > 10\n\n@kitty.green_flag\ndef start():\n"
+        "    global n\n    while not big(n):\n        n += 1\n",
+    ),
+    (
+        "repeat_until in",
+        'import kitty\nitems = ["a"]\n\n@kitty.green_flag\ndef start():\n'
+        '    with kitty.repeat_until("z" in items):\n        items.append("z")\n',
+    ),
+    (
+        "wait_until in",
+        'import kitty\nitems = ["a"]\n\n@kitty.green_flag\ndef start():\n'
+        '    kitty.wait_until("z" in items)\n',
+    ),
+]
+
+
+def _subtree(blocks, block_id, follow_next):
+    found = []
+    stack = [block_id]
+    while stack:
+        current = stack.pop()
+        if not isinstance(current, str) or current not in blocks:
+            continue
+        found.append(blocks[current])
+        if follow_next:
+            stack.append(blocks[current].get("next"))
+        for value in blocks[current].get("inputs", {}).values():
+            if isinstance(value, list) and len(value) > 1:
+                stack.append(value[1])
+    return found
+
+
+def _loop_rereads_test(sb3):
+    with zipfile.ZipFile(sb3) as archive:
+        project = json.loads(archive.read("project.json"))
+    for target in project["targets"]:
+        blocks = target.get("blocks", {})
+        for block in blocks.values():
+            if not isinstance(block, dict) or block.get("opcode") != "control_repeat_until":
+                continue
+            condition = block.get("inputs", {}).get("CONDITION", [None, None])[1]
+            body = block.get("inputs", {}).get("SUBSTACK", [None, None])[1]
+            read = {
+                item["fields"]["VARIABLE"][0]
+                for item in _subtree(blocks, condition, False)
+                if item.get("opcode") == "data_variable"
+            }
+            written = {
+                item["fields"]["VARIABLE"][0]
+                for item in _subtree(blocks, body, True)
+                if item.get("opcode") == "data_setvariableto"
+            }
+            if read & written:
+                return True
+    return False
+
+
+def compile_loop_tests():
+    failures = []
+    if TMP.exists():
+        shutil.rmtree(TMP)
+    TMP.mkdir()
+    try:
+        for name, source in LOOP_TESTS:
+            folder = TMP / name.replace(" ", "_")
+            folder.mkdir()
+            script = folder / "case.py"
+            script.write_text(source, encoding="utf-8")
+            output = folder / "case.sb3"
+            try:
+                comp(script, output)
+            except CompileError as exc:
+                failures.append(f"{name}: {exc}")
+                continue
+            if not _loop_rereads_test(output):
+                failures.append(f"{name}: the loop test is worked out once, before the loop")
+    finally:
+        shutil.rmtree(TMP, ignore_errors=True)
+    return failures
+
+
 def compile_rejects():
     failures = []
     if TMP.exists():
@@ -271,6 +362,7 @@ def main():
         print("scratch-parser not found; skipped")
     problems.extend(compile_cli_aliases())
     problems.extend(compile_ignored())
+    problems.extend(compile_loop_tests())
     problems.extend(compile_rejects())
     if problems:
         print("FAILED")

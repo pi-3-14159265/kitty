@@ -2769,9 +2769,7 @@ class Target:
         self.ephemeral_stack.append([])
         try:
             heads = self._compile_stmt_inner(stmt)
-            extra = []
-            for owner in self.ephemeral_stack[-1]:
-                extra.extend(self._release_ref(owner, stmt))
+            extra = self._release_owners(self.ephemeral_stack[-1], stmt)
         finally:
             hoisted = self.hoist_stack.pop()
             self.ephemeral_stack.pop()
@@ -2791,9 +2789,9 @@ class Target:
         if isinstance(stmt, ast.For):
             return self._compile_for(stmt)
         if isinstance(stmt, ast.While):
-            return [self._compile_while(stmt)]
+            return self._compile_while(stmt)
         if isinstance(stmt, ast.With):
-            return [self._compile_with(stmt)]
+            return self._compile_with(stmt)
         if isinstance(stmt, ast.Assign):
             compiled = self._compile_assign(stmt)
             if compiled is None:
@@ -3276,6 +3274,10 @@ class Target:
             self._error(expr, f"use with kitty.{name}(...): or self.{name}(...):")
         if spec.shape != "stack":
             self._error(expr, f"{name} is a value, not a command")
+        if name == "wait_until":
+            until = self._condition_arg(expr)
+            if until is not None:
+                return self._wait_until(until, expr)
         return [self._emit_spec(spec, expr)]
 
     def _compile_if(self, stmt):
@@ -3405,18 +3407,107 @@ class Target:
         test = stmt.test
         if isinstance(test, ast.Constant) and test.value is True:
             block = self._new_block("control_forever")
+            body = self._compile_stmts(stmt.body)
+            self._link(body, block)
+            if body:
+                self.blocks[block]["inputs"]["SUBSTACK"] = [2, body[0]]
+            return [block]
+        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+            until = test.operand
         else:
+            until = self._negate(test, test)
+        return self._repeat_until_loop(until, stmt.body, test)
+
+    def _repeat_until_loop(self, until, body, node):
+        block = self._new_block("control_repeat_until")
+        condition, setup, owners = self._isolated_value(until)
+        if setup or owners:
+            return self._poll_until(block, until, condition, setup, owners, body, node)
+        self._apply_boolean(block, "CONDITION", condition, until)
+        heads = self._compile_stmts(body)
+        self._link(heads, block)
+        if heads:
+            self.blocks[block]["inputs"]["SUBSTACK"] = [2, heads[0]]
+        return [block]
+
+    def _wait_until(self, until, node):
+        condition, setup, owners = self._isolated_value(until)
+        if setup or owners:
             block = self._new_block("control_repeat_until")
-            if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
-                condition = self._compile_expr(test.operand)
-            else:
-                condition = self._not_value(self._compile_expr(test), test)
-            self._apply_boolean(block, "CONDITION", condition, test)
-        body = self._compile_stmts(stmt.body)
-        self._link(body, block)
-        if body:
-            self.blocks[block]["inputs"]["SUBSTACK"] = [2, body[0]]
-        return block
+            return self._poll_until(block, until, condition, setup, owners, [], node)
+        block = self._new_block("control_wait_until")
+        self._apply_boolean(block, "CONDITION", condition, until)
+        return [block]
+
+    def _poll_until(self, block, until, condition, setup, owners, body, node):
+        """Loop until a condition that needs blocks of its own before it can be read.
+
+        A custom block call, `in` on a list, or a conditional value in the
+        condition runs blocks first. The loop block only rereads its input, so
+        those blocks would run once. Keep the answer in a hidden variable and
+        work it out again at the end of every pass.
+        """
+        stop = self._hidden_var(node)
+        heads = setup + self._store_boolean(stop, condition, until) + self._release_owners(owners, node)
+        self._apply_boolean(block, "CONDITION", Value("var", stop, True), node)
+        inner = self._compile_stmts(body) + self._truth_heads(stop, until)
+        self._link(inner, block)
+        self.blocks[block]["inputs"]["SUBSTACK"] = [2, inner[0]]
+        return heads + [block]
+
+    def _truth_heads(self, flag, node):
+        """Blocks that set flag to 1 when node is true and to 0 when it is false.
+
+        and/or stop at the first operand that settles the answer, as in Python,
+        so a later operand's blocks do not run. After break, the loop test
+        starts with the break flag, and the rest of the test is skipped.
+        """
+        if isinstance(node, ast.BoolOp):
+            heads = self._truth_heads(flag, node.values[0])
+            for operand in node.values[1:]:
+                open_question = Value("var", flag, True)
+                if isinstance(node.op, ast.Or):
+                    open_question = self._not_value(open_question, node)
+                heads.append(self._if_else(open_question, self._truth_heads(flag, operand), [], node))
+            return heads
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            heads = self._truth_heads(flag, node.operand)
+            flipped = self._not_value(Value("var", flag, True), node)
+            return heads + self._store_boolean(flag, flipped, node)
+        value, setup, owners = self._isolated_value(node)
+        return setup + self._store_boolean(flag, value, node) + self._release_owners(owners, node)
+
+    def _isolated_value(self, node):
+        """Compile node on its own.
+
+        Returns the value, the blocks that must run before the value is read,
+        and the hidden lists to release once it has been read.
+        """
+        setup = []
+        owners = []
+        self.hoist_stack.append(setup)
+        self.ephemeral_stack.append(owners)
+        try:
+            value = self._compile_expr(node)
+        finally:
+            self.hoist_stack.pop()
+            self.ephemeral_stack.pop()
+        return value, setup, owners
+
+    def _release_owners(self, owners, node):
+        heads = []
+        for owner in owners:
+            heads.extend(self._release_ref(owner, node))
+        return heads
+
+    def _condition_arg(self, call):
+        """The one condition of repeat_until or wait_until, or None to let the block report the mistake."""
+        if len(call.args) + len(call.keywords) != 1:
+            return None
+        if call.args:
+            return call.args[0]
+        keyword = call.keywords[0]
+        return keyword.value if keyword.arg == "condition" else None
 
     def _compile_with(self, stmt):
         if len(stmt.items) != 1:
@@ -3430,12 +3521,16 @@ class Target:
         spec = BLOCKS.get(name) if name else None
         if spec is None or spec.shape != "c":
             self._error(item.context_expr, "with expects kitty.repeat, kitty.forever, kitty.if_, or kitty.repeat_until")
+        if name == "repeat_until":
+            until = self._condition_arg(item.context_expr)
+            if until is not None:
+                return self._repeat_until_loop(until, stmt.body, item.context_expr)
         block = self._emit_spec(spec, item.context_expr)
         body = self._compile_stmts(stmt.body)
         self._link(body, block)
         if body:
             self.blocks[block]["inputs"]["SUBSTACK"] = [2, body[0]]
-        return block
+        return [block]
 
     def _compile_assign(self, stmt):
         target = stmt.targets[0] if isinstance(stmt, ast.Assign) else stmt.target
