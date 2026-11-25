@@ -231,7 +231,7 @@ MENUS = {
 }
 
 
-DECLARATIONS = {"variable", "list", "dict", "costume", "sound", "backdrop", "sprite_name"}
+DECLARATIONS = {"variable", "list", "dict", "costume", "sound", "backdrop", "sprite_name", "start_with"}
 
 MATH = {
     "abs": "abs",
@@ -338,6 +338,7 @@ _export("list", "Declare a Scratch list.", Signature([
     Parameter("value", Parameter.POSITIONAL_OR_KEYWORD, default=None),
     Parameter("shared", Parameter.KEYWORD_ONLY, default=False),
     Parameter("show", Parameter.KEYWORD_ONLY, default=False),
+    Parameter("scratch", Parameter.KEYWORD_ONLY, default=False),
 ]))
 _export("dict", "Declare a dictionary stored as a keys list and a values list.", Signature([
     Parameter("name", Parameter.POSITIONAL_OR_KEYWORD),
@@ -349,6 +350,7 @@ _export("costume", "Add a costume file (svg, png, or jpg) to this sprite.", Sign
     Parameter("path", Parameter.POSITIONAL_OR_KEYWORD),
     Parameter("name", Parameter.KEYWORD_ONLY, default=None),
     Parameter("resolution", Parameter.KEYWORD_ONLY, default=1),
+    Parameter("center", Parameter.KEYWORD_ONLY, default=None),
 ]))
 _export("sound", "Add a sound file to this sprite.", Signature([
     Parameter("path", Parameter.POSITIONAL_OR_KEYWORD),
@@ -358,9 +360,15 @@ _export("backdrop", "Add a backdrop file (svg, png, or jpg) to the stage.", Sign
     Parameter("path", Parameter.POSITIONAL_OR_KEYWORD),
     Parameter("name", Parameter.KEYWORD_ONLY, default=None),
     Parameter("resolution", Parameter.KEYWORD_ONLY, default=1),
+    Parameter("center", Parameter.KEYWORD_ONLY, default=None),
 ]))
 _export("sprite_name", "Set this sprite's name.", Signature([
     Parameter("name", Parameter.POSITIONAL_OR_KEYWORD),
+]))
+_export("start_with", "How this sprite or the stage starts when the project opens.", Signature([
+    Parameter(key, Parameter.KEYWORD_ONLY, default=None)
+    for key in ("x", "y", "direction", "size", "visible", "costume", "rotation_style",
+                "draggable", "volume", "layer", "backdrop", "tempo")
 ]))
 
 class Sprite:

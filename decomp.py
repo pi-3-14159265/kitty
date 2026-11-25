@@ -1,37 +1,45 @@
-"""Decompile a Scratch 3 .sb3 file into a folder tree.
+"""Decompile a Scratch 3 .sb3 file into a Kitty project folder.
 
-An .sb3 file is a zip archive. The program lives in project.json as a graph of
-blocks. Running this module from the command line writes one folder per stage
-or sprite, with that target's script next to its costumes and sounds.
+    kitty decomp Fishing.sb3
+    kitty decomp Fishing.sb3 output_folder
+    py -m kitty decomp Fishing.sb3
 
-    kitty decompile Fishing.sb3
-    py -m kitty decompile Fishing.sb3
-    py -m kitty decompile Fishing.sb3 output_folder
+Fishing.sb3 becomes the folder Fishing/:
+
+    Fishing/
+        Assets/            costumes and backdrops
+        Sounds/            sounds
+        stage.py           the stage
+        Cat.py             one Kitty Python file per sprite
+        blocksAsText.txt   every script, written out as Scratch blocks
+
+Build it again with `kitty build Fishing/`. Blocks Kitty has no Python for
+are kept as comments, and the command warns about each one.
 """
 
 from __future__ import annotations
 
 import json
+import keyword
+import math
 import re
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+from comp import _bitmap_info, _svg_center
+from kitty import BLOCKS
 
 
-def decomp(target, optional_directory=None):
-    """Decompile a Scratch .sb3 file into a folder tree.
+def decomp(target, optional_directory=None, warnings=None):
+    """Decompile a Scratch .sb3 file into a Kitty project folder.
 
     target: path to the .sb3 file.
-    optional_directory: folder to write. When omitted, the tree is created
+    optional_directory: folder to write. When omitted, the folder is created
         next to the .sb3 file, named after it (Fishing.sb3 becomes Fishing/).
-
-    The tree looks like this:
-        project.txt
-        Stage/script.txt
-        Stage/costumes/...
-        Stage/sounds/...
-        SpriteName/script.txt
-        SpriteName/costumes/...
-        SpriteName/sounds/...
+        The folder must be new or empty, so a decompile never overwrites
+        Python you have changed.
+    warnings: optional list that receives a line for each block Kitty could
+        not turn into Python.
 
     Returns the output directory.
     """
@@ -40,14 +48,30 @@ def decomp(target, optional_directory=None):
         raise FileNotFoundError(f"Scratch file not found: {path}")
 
     directory = Path(optional_directory) if optional_directory is not None else _default_directory(path)
+    if directory.exists():
+        if not directory.is_dir():
+            raise FileExistsError(f"{directory} is a file. Choose a folder name")
+        if any(directory.iterdir()):
+            raise FileExistsError(f"{directory} already has files in it. Choose a new or empty folder")
     with zipfile.ZipFile(path) as archive:
         try:
             raw = archive.read("project.json")
         except KeyError as exc:
             raise ValueError(f"{path} is not a Scratch .sb3 file (no project.json)") from exc
         project = json.loads(raw.decode("utf-8"))
-        text, sections = _render_project(project, path.name)
-        _write_output(archive, project, text, sections, directory)
+        text, _sections = _render_project(project, path.name)
+        writer = _ProjectWriter(project, archive, path.name)
+        files = writer.build()
+    files["blocksAsText.txt"] = text.encode("utf-8")
+    directory.mkdir(parents=True, exist_ok=True)
+    for folder in ("Assets", "Sounds"):
+        (directory / folder).mkdir(exist_ok=True)
+    for relative, data in files.items():
+        destination = directory / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
+    if warnings is not None:
+        warnings.extend(writer.warnings)
     return directory
 
 
@@ -56,20 +80,6 @@ def _default_directory(path):
     if directory.exists() and not directory.is_dir():
         directory = path.with_name(path.stem + "_decompiled")
     return directory
-
-
-def _write_output(archive, project, text, sections, directory):
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "project.txt").write_text(text, encoding="utf-8")
-    available = set(archive.namelist())
-    used_names = {}
-    targets = project.get("targets") or []
-    for target, (name, section) in zip(targets, sections):
-        folder_name = "Stage" if target.get("isStage") else _safe_name(name)
-        folder = directory / _unique_stem(used_names, folder_name)
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "script.txt").write_text(section, encoding="utf-8")
-        _extract_target_assets(archive, available, target, folder)
 
 
 def _render_project(project, filename):
@@ -576,36 +586,17 @@ def _comment_block(text):
     return "\n".join("// " + line for line in lines)
 
 
-def _safe_name(name):
+_WINDOWS_RESERVED = {"con", "prn", "aux", "nul"} | {f"com{n}" for n in range(1, 10)} | {f"lpt{n}" for n in range(1, 10)}
+
+
+def _safe_file_stem(name, fallback):
+    """A file name stem that works on Windows, macOS, and Linux."""
     cleaned = _UNSAFE_FILENAME.sub("_", str(name)).strip(" .")
-    return cleaned or "untitled"
-
-
-def _unique_stem(used, stem):
-    count = used.get(stem, 0) + 1
-    used[stem] = count
-    if count == 1:
-        return stem
-    return f"{stem}_{count}"
-
-
-def _extract_target_assets(archive, available, target, folder):
-    for key in ("costumes", "sounds"):
-        used = {}
-        destination = folder / key
-        for item in target.get(key) or []:
-            md5ext = item.get("md5ext")
-            if not md5ext:
-                asset_id = item.get("assetId")
-                fmt = item.get("dataFormat")
-                if asset_id and fmt:
-                    md5ext = f"{asset_id}.{fmt}"
-            if not md5ext or md5ext not in available:
-                continue
-            destination.mkdir(parents=True, exist_ok=True)
-            ext = item.get("dataFormat") or md5ext.rsplit(".", 1)[-1]
-            filename = _unique_stem(used, _safe_name(item.get("name") or "asset")) + f".{ext}"
-            (destination / filename).write_bytes(archive.read(md5ext))
+    if not cleaned:
+        return fallback
+    if cleaned.split(".")[0].lower() in _WINDOWS_RESERVED:
+        cleaned += "_"
+    return cleaned
 
 
 def _spec(shape, template, boolean=""):
@@ -818,21 +809,1133 @@ _FIELD_LABELS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Kitty Python. Everything below turns project.json into .py files that
+# `kitty build` turns back into the same project.
+
+class _Unsupported(Exception):
+    """A block Kitty has no Python for. The message finishes "Not decompiled, ..."."""
+
+
+# Expression precedence, lowest first. A child with lower precedence than its
+# parent gets parentheses.
+_OR, _AND, _NOT, _CMP, _ADD, _MUL, _UNARY, _ATOM = range(1, 9)
+
+# Names the decompiled code uses itself, or Python keywords.
+_RESERVED = set(keyword.kwlist) | {
+    "kitty", "math", "self", "super", "len", "abs", "round", "range", "list", "tuple", "set", "dict",
+    "str", "int", "float", "bool", "print", "enumerate", "zip", "ignore", "Exception", "_",
+}
+# Kitty skips these file names in a folder build, or gives them a meaning.
+_RESERVED_FILES = {"stage", "kitty", "comp", "decomp", "cli"}
+_CANONICAL_NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d*[1-9])?")
+_JS_DECIMAL = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+_JS_PREFIXED = re.compile(r"0[xX][0-9a-fA-F]+|0[bB][01]+|0[oO][0-7]+")
+_MENU_VALUES = {
+    "_mouse_": "mouse-pointer",
+    "_random_": "random position",
+    "_myself_": "myself",
+    "_stage_": "stage",
+    "_edge_": "edge",
+}
+_MATH_CALLS = {
+    "abs": "abs", "floor": "kitty.floor", "ceiling": "kitty.ceiling", "sqrt": "kitty.sqrt",
+    "sin": "kitty.sin", "cos": "kitty.cos", "tan": "kitty.tan", "asin": "kitty.asin", "acos": "kitty.acos",
+    "atan": "kitty.atan", "ln": "kitty.ln", "log": "kitty.log", "e ^": "kitty.exp", "10 ^": "kitty.power10",
+}
+_BOOLEAN_OPCODES = {
+    "operator_gt", "operator_lt", "operator_equals", "operator_and", "operator_or", "operator_not",
+    "operator_contains", "data_listcontainsitem", "sensing_touchingobject", "sensing_touchingcolor",
+    "sensing_coloristouchingcolor", "sensing_keypressed", "sensing_mousedown", "argument_reporter_boolean",
+}
+_HATS = {
+    "event_whenflagclicked", "event_whenkeypressed", "event_whenthisspriteclicked", "event_whenstageclicked",
+    "event_whenbackdropswitchesto", "event_whengreaterthan", "event_whenbroadcastreceived", "control_start_as_clone",
+}
+# kitty.<name> blocks by opcode. A few opcodes share one block with a fixed field.
+_BY_OPCODE = {}
+for _name, _block_spec in BLOCKS.items():
+    _BY_OPCODE.setdefault(_block_spec.opcode, []).append((_name, _block_spec))
+del _name, _block_spec
+
+
+def _wrap(expr, prec, right=False):
+    code, own = expr
+    if own < prec or (own == prec and (right or prec == _CMP)):
+        return f"({code})"
+    return code
+
+
+def _py_str(text):
+    return json.dumps(str(text), ensure_ascii=False)
+
+
+def _js_number(value):
+    """Scratch reads text as JavaScript's Number() does. None means not a number, which Scratch counts as 0."""
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if text == "":
+        return 0.0
+    if text in ("Infinity", "+Infinity"):
+        return math.inf
+    if text == "-Infinity":
+        return -math.inf
+    if _JS_DECIMAL.fullmatch(text):
+        return float(text)
+    if _JS_PREFIXED.fullmatch(text):
+        return float(int(text, 0))
+    return None
+
+
+def _number_code(value):
+    if math.isinf(value):
+        return "kitty.divide(1, 0)" if value > 0 else "kitty.divide(-1, 0)"
+    if math.isnan(value):
+        return "0"
+    if value.is_integer() and abs(value) < 1e16:
+        return str(int(value))
+    return repr(value)
+
+
+def _number_literal(raw):
+    """A number input's literal. Scratch counts text that is not a number as 0."""
+    text = str(raw).strip() if not isinstance(raw, (int, float)) or isinstance(raw, bool) else None
+    if text is not None and _CANONICAL_NUMBER.fullmatch(text) and text != "-0":
+        code = text
+    else:
+        number = _js_number(raw)
+        code = _number_code(0.0 if number is None else number)
+    return code, _UNARY if code.startswith("-") else _ATOM
+
+
+def _text_literal(raw):
+    """A text input's literal. Text that is exactly a number, such as 10 or 2.5, is written as the number."""
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return _number_literal(raw)
+    text = "" if raw is None else str(raw)
+    if _CANONICAL_NUMBER.fullmatch(text) and text != "-0":
+        return text, _UNARY if text.startswith("-") else _ATOM
+    return _py_str(text), _ATOM
+
+
+def _value_literal(value):
+    """A declaration's starting value: a number or text literal."""
+    if isinstance(value, bool):
+        return _py_str("true" if value else "false")
+    if isinstance(value, (int, float)):
+        number = float(value)
+        if math.isinf(number) or math.isnan(number):
+            return _py_str(_format_js(number))
+        return _number_code(number)
+    if value is None:
+        return "0"
+    if isinstance(value, (list, dict)):
+        return _py_str(json.dumps(value))
+    return _py_str(value)
+
+
+def _format_js(number):
+    if math.isnan(number):
+        return "NaN"
+    return "Infinity" if number > 0 else "-Infinity"
+
+
+def _color_code(raw):
+    text = str(raw or "").strip()
+    if not text.startswith("#"):
+        text = "#" + text
+    if len(text) not in (4, 7):
+        text = "#000000"
+    return _py_str(text.lower()), _ATOM
+
+
+def _first_field(block):
+    fields = block.get("fields") or {}
+    if not fields:
+        return ""
+    value = next(iter(fields.values()))
+    if isinstance(value, list):
+        return "" if not value or value[0] is None else value[0]
+    return "" if value is None else value
+
+
+def _identifier(text):
+    chars = []
+    for char in str(text):
+        ok = char == "_" or (char.isalnum() and ("a" + char).isidentifier())
+        chars.append(char if ok else "_")
+    return re.sub(r"_+", "_", "".join(chars)).strip("_")
+
+
+def _comment_lines(text, pad):
+    lines = str(text).splitlines() or [""]
+    return [f"{pad}# {line}".rstrip() for line in lines]
+
+
+class _Names:
+    """Python names in one file. Each Scratch name gets a valid identifier that no other name uses."""
+
+    def __init__(self, taken=()):
+        self.taken = set(taken)
+
+    def claim(self, text, prefix):
+        base = _identifier(text)
+        if not base:
+            base = prefix
+        elif base[0].isdigit():
+            base = f"{prefix}_{base}"
+        if base in _RESERVED or keyword.iskeyword(base):
+            base += "_"
+        name = base
+        number = 2
+        while name in self.taken:
+            name = f"{base}_{number}"
+            number += 1
+        self.taken.add(name)
+        return name
+
+
+class _Item:
+    """A variable or list: its Python name, its Scratch name, and how it starts."""
+
+    def __init__(self, py, scratch, value, show, cloud):
+        self.py = py
+        self.scratch = scratch
+        self.value = value
+        self.show = show
+        self.cloud = cloud
+
+    @property
+    def display(self):
+        # A leading dot marks Kitty's own hidden names. A rebuild makes those again, so rename these.
+        return self.py if self.scratch.startswith(".") or not self.scratch else self.scratch
+
+
+class _Proc:
+    def __init__(self, py, params, warp, define_id):
+        self.py = py
+        self.params = params
+        self.warp = warp
+        self.define_id = define_id
+
+
+class _ProjectWriter:
+    def __init__(self, project, archive, source_name):
+        self.targets = [item for item in project.get("targets") or [] if isinstance(item, dict)]
+        self.stage = next((item for item in self.targets if item.get("isStage")), None)
+        self.archive = archive
+        self.available = set(archive.namelist())
+        self.source_name = source_name
+        self.warnings = []
+        self.files = {}
+        self.assets = {}
+        self.used_files = {"Assets": set(), "Sounds": set()}
+        self.shown = {
+            monitor.get("id") for monitor in project.get("monitors") or []
+            if isinstance(monitor, dict) and monitor.get("visible")
+        }
+        names = _Names()
+        self.stage_vars = {}
+        self.stage_lists = {}
+        if self.stage is not None:
+            for vid, entry in (self.stage.get("variables") or {}).items():
+                self.stage_vars[vid] = _new_item(names, entry, vid in self.shown, False)
+            for lid, entry in (self.stage.get("lists") or {}).items():
+                self.stage_lists[lid] = _new_item(names, entry, lid in self.shown, True)
+        self.global_names = names.taken
+
+    def build(self):
+        used = {"stage"}
+        sprites = [item for item in self.targets if not item.get("isStage")]
+        if self.stage is not None:
+            self.files["stage.py"] = _TargetWriter(self, self.stage, "stage", 0).source().encode("utf-8")
+        for index, target in enumerate(sprites, start=1):
+            name = str(target.get("name") or "sprite")
+            stem = _safe_file_stem(name, "sprite")
+            if stem.lower() in _RESERVED_FILES:
+                stem += "_sprite"
+            candidate = stem
+            number = 2
+            while candidate.lower() in used:
+                candidate = f"{stem}_{number}"
+                number += 1
+            used.add(candidate.lower())
+            layer = target.get("layerOrder") if isinstance(target.get("layerOrder"), int) else index
+            source = _TargetWriter(self, target, candidate, layer).source()
+            self.files[f"{candidate}.py"] = source.encode("utf-8")
+        return self.files
+
+    def asset(self, item, folder):
+        """Write a costume or sound file once, and return (relative path, bytes), or None if it is missing."""
+        md5ext = item.get("md5ext")
+        if not md5ext and item.get("assetId") and item.get("dataFormat"):
+            md5ext = f"{item['assetId']}.{item['dataFormat']}"
+        key = (folder, md5ext)
+        if key in self.assets:
+            return self.assets[key]
+        if not md5ext or md5ext not in self.available:
+            return None
+        data = self.archive.read(md5ext)
+        ext = str(item.get("dataFormat") or md5ext.rsplit(".", 1)[-1]).lower()
+        if ext == "jpeg":
+            ext = "jpg"
+        stem = _safe_file_stem(item.get("name") or "", "asset")
+        used = self.used_files[folder]
+        candidate = stem
+        number = 2
+        while f"{candidate}.{ext}".lower() in used:
+            candidate = f"{stem}_{number}"
+            number += 1
+        used.add(f"{candidate}.{ext}".lower())
+        path = f"{folder}/{candidate}.{ext}"
+        self.files[path] = data
+        self.assets[key] = (path, data)
+        return self.assets[key]
+
+
+def _new_item(names, entry, show, is_list):
+    entry = entry if isinstance(entry, list) else [str(entry)]
+    scratch = str(entry[0]) if entry else ""
+    value = entry[1] if len(entry) > 1 else ([] if is_list else 0)
+    cloud = len(entry) > 2 and entry[2] is True
+    py = names.claim(scratch.lstrip("."), "items" if is_list else "value")
+    return _Item(py, scratch, value, show, cloud)
+
+
+class _TargetWriter:
+    def __init__(self, project, target, file_stem, layer):
+        self.project = project
+        self.target = target
+        self.blocks = target.get("blocks") or {}
+        self.is_stage = bool(target.get("isStage"))
+        self.name = str(target.get("name") or ("Stage" if self.is_stage else "sprite"))
+        self.label = "Stage" if self.is_stage else f"sprite {self.name}"
+        self.file_stem = file_stem
+        self.layer = layer
+        self.names = _Names(project.global_names)
+        self.text = _TargetDecompiler(target)
+        self.comments = {}
+        self.floating = []
+        for comment in (target.get("comments") or {}).values():
+            if not isinstance(comment, dict):
+                continue
+            text = str(comment.get("text") or "")
+            if comment.get("blockId"):
+                self.comments[comment["blockId"]] = text
+            elif text.strip():
+                self.floating.append(comment)
+        if self.is_stage:
+            self.vars = project.stage_vars
+            self.lists = project.stage_lists
+        else:
+            self.vars = {}
+            self.lists = {}
+            for vid, entry in (target.get("variables") or {}).items():
+                self.vars[vid] = _new_item(self.names, entry, vid in project.shown, False)
+            for lid, entry in (target.get("lists") or {}).items():
+                self.lists[lid] = _new_item(self.names, entry, lid in project.shown, True)
+        self.used_stage_vars = {}
+        self.used_stage_lists = {}
+        self.procs = {}
+        self.assigned = set()
+        self.params = {}
+        self.pending = []
+        self._collect_procs()
+
+    # -- the file ----------------------------------------------------------
+
+    def source(self):
+        order = []
+        for index, (block_id, block) in enumerate(self.blocks.items()):
+            if isinstance(block, dict) and block.get("topLevel") and not block.get("shadow"):
+                order.append((block.get("y") or 0, block.get("x") or 0, index, block_id))
+            elif isinstance(block, list):
+                order.append((_coord(block, 4), _coord(block, 3), index, block_id))
+        order.sort(key=lambda item: item[:3])
+        procs = []
+        scripts = []
+        loose = []
+        for _y, _x, _index, block_id in order:
+            block = self.blocks[block_id]
+            opcode = block.get("opcode") if isinstance(block, dict) else None
+            if opcode == "procedures_definition":
+                proc = next((item for item in self.procs.values() if item.define_id == block_id), None)
+                if proc is not None:
+                    procs.append(self._proc_source(proc, block_id, block))
+            elif opcode in _HATS or (opcode and "_when" in opcode.lower()):
+                scripts.append(self._hat_source(block_id, block))
+            else:
+                loose.append(block_id)
+        functions = procs + scripts
+        lines = [f"# {self._title()}, decompiled from {self.project.source_name} by kitty decomp.", "import kitty", ""]
+        media = self._media_lines()
+        if media:
+            lines.extend(media + [""])
+        declarations = self._declaration_lines()
+        if declarations:
+            lines.extend(declarations + [""])
+        for function in functions:
+            lines.extend(["", function, ""])
+        for tail in (self._loose_lines(loose), self._floating_lines()):
+            if tail:
+                lines.extend([""] + tail)
+        while lines and lines[-1] == "":
+            lines.pop()
+        return "\n".join(lines) + "\n"
+
+    def _title(self):
+        return "The stage" if self.is_stage else f"Sprite {self.name.strip()}"
+
+    def _warn(self, message):
+        self.project.warnings.append(f"{self.label}: {message}")
+
+    def _media_lines(self):
+        lines = []
+        if not self.is_stage and self.name.strip() != self.file_stem:
+            lines.append(f"kitty.sprite_name({_py_str(self.name)})")
+        call = "kitty.backdrop" if self.is_stage else "kitty.costume"
+        kept = set()
+        for costume in self.target.get("costumes") or []:
+            line = self._costume_line(call, costume)
+            lines.append(line)
+            if not line.startswith("#"):
+                kept.add(str(costume.get("name") or ""))
+        for sound in self.target.get("sounds") or []:
+            found = self.project.asset(sound, "Sounds")
+            name = str(sound.get("name") or "")
+            if found is None:
+                self._warn(f"the sound {name!r} is missing from the .sb3 file")
+                continue
+            path, _data = found
+            args = [_py_str(path)]
+            if name != PurePosixPath(path).stem:
+                args.append(f"name={_py_str(name)}")
+            lines.append(f"kitty.sound({', '.join(args)})")
+        start = self._start_args(kept)
+        if start:
+            lines.append(f"kitty.start_with({', '.join(start)})")
+        return lines
+
+    def _costume_line(self, call, costume):
+        name = str(costume.get("name") or "")
+        found = self.project.asset(costume, "Assets")
+        if found is None:
+            self._warn(f"the costume {name!r} is missing from the .sb3 file")
+            return f"# {call}(...)  # {name!r} was missing from the .sb3 file"
+        path, data = found
+        fmt = PurePosixPath(path).suffix.lstrip(".")
+        args = [_py_str(path)]
+        if name != PurePosixPath(path).stem:
+            args.append(f"name={_py_str(name)}")
+        default = None
+        if fmt == "svg":
+            default = _svg_center(data)
+        else:
+            try:
+                info = _bitmap_info(data)
+            except ValueError:
+                info = None
+            if info is None:
+                self._warn(f"the costume {name!r} is a {fmt} file. Save it as png to use it")
+                return f"# {call}({', '.join(args)})  # Kitty takes svg, png, or jpg"
+            default = (info[1] / 2, info[2] / 2)
+            if costume.get("bitmapResolution") == 2:
+                args.append("resolution=2")
+        center_x = costume.get("rotationCenterX")
+        center_y = costume.get("rotationCenterY")
+        if isinstance(center_x, (int, float)) and isinstance(center_y, (int, float)):
+            if default is None or abs(default[0] - center_x) > 1e-6 or abs(default[1] - center_y) > 1e-6:
+                args.append(f"center=({_number_code(float(center_x))}, {_number_code(float(center_y))})")
+        return f"{call}({', '.join(args)})"
+
+    def _start_args(self, kept):
+        target = self.target
+        costumes = target.get("costumes") or []
+        args = []
+
+        def number(key, value, default):
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value != default:
+                args.append(f"{key}={_number_code(float(value))}")
+
+        current = target.get("currentCostume")
+        if isinstance(current, int) and 0 < current < len(costumes):
+            name = str(costumes[current].get("name") or "")
+            if name in kept:
+                key = "backdrop" if self.is_stage else "costume"
+                args.append(f"{key}={_py_str(name)}")
+        if self.is_stage:
+            number("volume", target.get("volume"), 100)
+            number("tempo", target.get("tempo"), 60)
+            return args
+        number("x", target.get("x"), 0)
+        number("y", target.get("y"), 0)
+        number("direction", target.get("direction"), 90)
+        number("size", target.get("size"), 100)
+        if target.get("visible") is False:
+            args.append("visible=False")
+        style = target.get("rotationStyle")
+        if isinstance(style, str) and style != "all around":
+            args.append(f"rotation_style={_py_str(style)}")
+        if target.get("draggable") is True:
+            args.append("draggable=True")
+        number("volume", target.get("volume"), 100)
+        args.append(f"layer={self.layer}")
+        return args
+
+    def _declaration_lines(self):
+        lines = []
+        for item in self.used_stage_vars.values():
+            lines.append(f"{item.py} = kitty.variable({_py_str(item.display)}, {_value_literal(item.value)}, shared=True)")
+        for item in self.vars.values():
+            if item.cloud:
+                self._warn(f"the cloud variable {item.scratch!r} is a plain variable in Kitty")
+            extra = ", show=True" if item.show else ""
+            if item.py == item.display and not extra:
+                lines.append(f"{item.py} = {_value_literal(item.value)}")
+            else:
+                lines.append(f"{item.py} = kitty.variable({_py_str(item.display)}, {_value_literal(item.value)}{extra})")
+        for item in self.used_stage_lists.values():
+            lines.append(f"{item.py} = kitty.list({_py_str(item.display)}, {self._items(item)}, scratch=True, shared=True)")
+        for item in self.lists.values():
+            extra = ", show=True" if item.show else ""
+            lines.append(f"{item.py} = kitty.list({_py_str(item.display)}, {self._items(item)}, scratch=True{extra})")
+        return lines
+
+    def _items(self, item):
+        values = item.value if isinstance(item.value, list) else []
+        return "[" + ", ".join(_value_literal(value) for value in values) + "]"
+
+    def _loose_lines(self, loose):
+        lines = []
+        for block_id in loose:
+            block = self.blocks[block_id]
+            if isinstance(block, list):
+                text = [self.text._floating_reporter(block)]
+            else:
+                text = self.text._chain(block_id, 0)
+            if not lines:
+                lines.append("# Blocks that are not under a hat block. Scratch never runs them.")
+            lines.append("#")
+            lines.extend(f"#     {line}".rstrip() for line in text)
+        return lines
+
+    def _floating_lines(self):
+        lines = []
+        for comment in self.floating:
+            if not lines:
+                lines.append("# Comments from the Scratch workspace:")
+            lines.append("#")
+            lines.extend(_comment_lines(comment.get("text") or "", ""))
+        return lines
+
+    # -- custom blocks and hats --------------------------------------------
+
+    def _collect_procs(self):
+        for block_id, block in self.blocks.items():
+            if not isinstance(block, dict) or block.get("opcode") != "procedures_definition":
+                continue
+            proto = self.text._prototype(block)
+            mutation = (proto or {}).get("mutation") or {}
+            code = mutation.get("proccode")
+            if not code or code in self.procs:
+                continue
+            pieces = _PROC_SPLIT.split(code)
+            slots = [piece for piece in pieces if piece in ("%s", "%n", "%b")]
+            label = " ".join(piece for piece in pieces if piece not in ("%s", "%n", "%b"))
+            py = self.names.claim(label, "block")
+            ids = _json_list(mutation.get("argumentids"))
+            arg_names = _json_list(mutation.get("argumentnames"))
+            param_names = _Names(self.names.taken)
+            params = []
+            for index, arg_id in enumerate(ids):
+                arg_name = str(arg_names[index]) if index < len(arg_names) else f"arg {index + 1}"
+                boolean = index < len(slots) and slots[index] == "%b"
+                params.append((arg_id, arg_name, param_names.claim(arg_name, "value"), boolean))
+            self.procs[code] = _Proc(py, params, _is_warp(mutation), block_id)
+
+    def _proc_source(self, proc, block_id, block):
+        self.assigned = set()
+        self.params = {}
+        for _arg_id, arg_name, py, boolean in proc.params:
+            self.params.setdefault(arg_name, py)
+        body = self._body_lines(block.get("next"), 0)
+        self.params = {}
+        lines = _comment_lines(self.comments[block_id], "") if block_id in self.comments else []
+        if not proc.warp:
+            # Scratch draws the screen between steps of this block.
+            lines.append("@kitty.block(warp=False)")
+        params = ", ".join(f"{py}: bool" if boolean else py for _arg_id, _name, py, boolean in proc.params)
+        lines.append(f"def {proc.py}({params}):")
+        return "\n".join(lines + self._globals() + body)
+
+    def _hat_source(self, block_id, block):
+        try:
+            decorator, stem = self._hat(block)
+        except _Unsupported as exc:
+            self._warn(str(exc))
+            lines = [f"# Not decompiled, {exc}:"]
+            lines.extend(f"#     {line}".rstrip() for line in self.text._chain(block_id, 0))
+            return "\n".join(lines)
+        name = self.names.claim(stem, "script")
+        self.assigned = set()
+        body = self._body_lines(block.get("next"), 0)
+        lines = _comment_lines(self.comments[block_id], "") if block_id in self.comments else []
+        lines.extend([decorator, f"def {name}():"])
+        return "\n".join(lines + self._globals() + body)
+
+    def _globals(self):
+        if not self.assigned:
+            return []
+        return ["    global " + ", ".join(sorted(self.assigned))]
+
+    def _hat(self, block):
+        opcode = block.get("opcode")
+        if opcode == "event_whenflagclicked":
+            return "@kitty.green_flag", "on_green_flag"
+        if opcode == "event_whenkeypressed":
+            key = str(self._field(block, "KEY_OPTION"))
+            return f"@kitty.when_key({_py_str(key)})", f"on_key_{key}"
+        if opcode == "event_whenthisspriteclicked":
+            return "@kitty.when_clicked", "on_click"
+        if opcode == "event_whenstageclicked":
+            return ("@kitty.when_clicked" if self.is_stage else "@kitty.when_stage_clicked"), "on_stage_click"
+        if opcode == "event_whenbackdropswitchesto":
+            name = str(self._field(block, "BACKDROP"))
+            return f"@kitty.when_backdrop({_py_str(name)})", f"on_backdrop_{name}"
+        if opcode == "event_whenbroadcastreceived":
+            message = str(self._field(block, "BROADCAST_OPTION"))
+            return f"@kitty.when_receive({_py_str(message)})", f"on_{message}"
+        if opcode == "control_start_as_clone":
+            return "@kitty.when_cloned", "on_clone_start"
+        if opcode == "event_whengreaterthan":
+            kind = "loudness" if str(self._field(block, "WHENGREATERTHANMENU")).upper() == "LOUDNESS" else "timer"
+            found, data = self._input(block, "VALUE")
+            if found == "lit":
+                value = _number_literal(data[1] if len(data) > 1 else 0)[0]
+            elif found == "shadow":
+                value = _number_literal(_first_field(data))[0]
+            else:
+                raise _Unsupported(f"a when {kind} > hat with a changing value")
+            return f"@kitty.when_{kind}({value})", f"on_{kind}"
+        raise _Unsupported(f"the hat block {opcode} has no Kitty decorator")
+
+    # -- statements ----------------------------------------------------------
+
+    def _body_lines(self, block_id, indent):
+        lines = self._chain(block_id, indent + 1)
+        if not any(not line.strip().startswith("#") for line in lines):
+            lines.append("    " * (indent + 1) + "pass")
+        return lines
+
+    def _chain(self, block_id, indent):
+        lines = []
+        seen = set()
+        while isinstance(block_id, str) and block_id not in seen:
+            seen.add(block_id)
+            block = self.blocks.get(block_id)
+            if not isinstance(block, dict):
+                break
+            lines.extend(self._statement(block_id, block, indent))
+            block_id = block.get("next")
+        return lines
+
+    def _statement(self, block_id, block, indent):
+        pad = "    " * indent
+        self.pending.append([])
+        try:
+            try:
+                lines = self._statement_lines(block, indent)
+            except _Unsupported as exc:
+                self._warn(str(exc))
+                lines = [f"{pad}# Not decompiled, {exc}:"]
+                lines.extend(f"{pad}#     {line}".rstrip() for line in self.text._statement(block_id, block, 0))
+            notes = self.pending[-1]
+        finally:
+            self.pending.pop()
+        head = []
+        for note in ([self.comments[block_id]] if block_id in self.comments else []) + notes:
+            head.extend(_comment_lines(note, pad))
+        return head + lines
+
+    def _header(self, render, placeholder, what):
+        """Render a C block's condition or count. If Kitty has no Python for it, note it and use the placeholder."""
+        try:
+            return render()
+        except _Unsupported as exc:
+            self._warn(str(exc))
+            self.pending[-1].append(f"Not decompiled, {exc}. {what} below is a placeholder.")
+            return placeholder
+
+    def _statement_lines(self, block, indent):
+        opcode = block.get("opcode")
+        pad = "    " * indent
+        if opcode == "control_repeat":
+            count = self._header(lambda: self._number(block, "TIMES"), ("0", _ATOM), "The repeat count")
+            return [f"{pad}for _ in range({count[0]}):"] + self._body(block, "SUBSTACK", indent)
+        if opcode == "control_forever":
+            return [f"{pad}while True:"] + self._body(block, "SUBSTACK", indent)
+        if opcode in ("control_if", "control_if_else"):
+            return self._if_lines(block, indent, "if")
+        if opcode == "control_repeat_until":
+            until = self._header(lambda: self._condition(block, "CONDITION"), None, "The loop test")
+            test = "False" if until is None else f"not {_wrap(until, _NOT)}"
+            return [f"{pad}while {test}:"] + self._body(block, "SUBSTACK", indent)
+        if opcode == "control_while":
+            test = self._header(lambda: self._condition(block, "CONDITION"), ("False", _ATOM), "The loop test")
+            return [f"{pad}while {test[0]}:"] + self._body(block, "SUBSTACK", indent)
+        if opcode == "control_for_each":
+            var = self._ref_field(block, "VARIABLE", False, assign=True)
+            count = self._number(block, "VALUE")
+            return [f"{pad}for {var} in range(1, {_wrap(count, _ADD)} + 1):"] + self._body(block, "SUBSTACK", indent)
+        if opcode == "control_all_at_once":
+            return self._chain(self._substack(block, "SUBSTACK"), indent)
+        if opcode == "data_setvariableto":
+            value = self._text(block, "VALUE")
+            var = self._ref_field(block, "VARIABLE", False, assign=True)
+            return [f"{pad}{var} = {value[0]}"]
+        if opcode == "data_changevariableby":
+            value = self._number(block, "VALUE")
+            var = self._ref_field(block, "VARIABLE", False, assign=True)
+            if value[1] == _UNARY and value[0].startswith("-"):
+                return [f"{pad}{var} -= {value[0][1:]}"]
+            return [f"{pad}{var} += {value[0]}"]
+        if opcode in _LIST_STATEMENTS:
+            return [pad + _LIST_STATEMENTS[opcode](self, block)]
+        if opcode == "procedures_call":
+            return [pad + self._call(block)]
+        found = self._spec(block)
+        if found is not None and found[1].shape == "stack":
+            name, spec = found
+            return [f"{pad}kitty.{name}({', '.join(self._spec_args(block, spec))})"]
+        if found is not None and found[1].shape == "c":
+            raise _Unsupported(f"the C block {opcode}")
+        raise _Unsupported(f"{opcode} has no Kitty block")
+
+    def _if_lines(self, block, indent, keyword_text):
+        pad = "    " * indent
+        test = self._header(lambda: self._condition(block, "CONDITION"), ("False", _ATOM), "The condition")
+        lines = [f"{pad}{keyword_text} {test[0]}:"] + self._body(block, "SUBSTACK", indent)
+        if block.get("opcode") != "control_if_else":
+            return lines
+        other_id = self._substack(block, "SUBSTACK2")
+        other = self.blocks.get(other_id) if other_id else None
+        if (
+            isinstance(other, dict)
+            and other.get("opcode") in ("control_if", "control_if_else")
+            and not other.get("next")
+            and other_id not in self.comments
+        ):
+            return lines + self._if_lines(other, indent, "elif")
+        return lines + [f"{pad}else:"] + self._body(block, "SUBSTACK2", indent)
+
+    def _body(self, block, name, indent):
+        return self._body_lines(self._substack(block, name), indent)
+
+    def _substack(self, block, name):
+        return _input_block_id((block.get("inputs") or {}).get(name))
+
+    def _call(self, block):
+        mutation = block.get("mutation") or {}
+        code = mutation.get("proccode")
+        proc = self.procs.get(code)
+        if proc is None:
+            raise _Unsupported(f"a call to the custom block {code!r}, which has no define block")
+        inputs = block.get("inputs") or {}
+        call_ids = _json_list(mutation.get("argumentids"))
+        args = []
+        for index, (arg_id, _name, _py, boolean) in enumerate(proc.params):
+            key = arg_id if arg_id in inputs or index >= len(call_ids) else call_ids[index]
+            args.append((self._condition(block, key) if boolean else self._text(block, key))[0])
+        return f"{proc.py}({', '.join(args)})"
+
+    # -- inputs ----------------------------------------------------------------
+
+    def _input(self, block, name):
+        """What fills an input: ("empty", None), ("lit", primitive), ("shadow", block),
+        ("block", id), ("var", [12, name, id]), or ("list", [13, name, id])."""
+        value = (block.get("inputs") or {}).get(name)
+        if not isinstance(value, list) or len(value) < 2 or value[1] is None:
+            return "empty", None
+        payload = value[1]
+        if isinstance(payload, str):
+            payload = self.blocks.get(payload, payload)
+            if isinstance(payload, dict):
+                return ("shadow", payload) if payload.get("shadow") else ("block", value[1])
+        if isinstance(payload, list) and payload:
+            if payload[0] == 12:
+                return "var", payload
+            if payload[0] == 13:
+                return "list", payload
+            return "lit", payload
+        return "empty", None
+
+    def _value(self, found, data):
+        if found == "var":
+            return self._ref(data[1], data[2] if len(data) > 2 else None, False), _ATOM
+        if found == "list":
+            return f'kitty.join({self._ref(data[1], data[2] if len(data) > 2 else None, True)}, "")', _ATOM
+        return self._reporter(data)
+
+    def _number(self, block, name):
+        found, data = self._input(block, name)
+        if found == "empty":
+            return "0", _ATOM
+        if found == "lit":
+            return _number_literal(data[1] if len(data) > 1 else "")
+        if found == "shadow":
+            return _number_literal(_first_field(data))
+        return self._value(found, data)
+
+    def _text(self, block, name):
+        found, data = self._input(block, name)
+        if found == "empty":
+            return '""', _ATOM
+        if found == "lit":
+            if data[0] == 9:
+                return _color_code(data[1] if len(data) > 1 else "")
+            return _text_literal(data[1] if len(data) > 1 else "")
+        if found == "shadow":
+            return _text_literal(_first_field(data))
+        return self._value(found, data)
+
+    def _condition(self, block, name):
+        found, data = self._input(block, name)
+        if found == "empty":
+            return "False", _ATOM
+        if found != "block":
+            raise _Unsupported("a round value in a condition slot")
+        target = self.blocks.get(data)
+        if not isinstance(target, dict) or target.get("opcode") not in _BOOLEAN_OPCODES:
+            raise _Unsupported("a round value in a condition slot")
+        return self._reporter(data)
+
+    def _menu(self, block, name):
+        found, data = self._input(block, name)
+        if found == "empty":
+            return '""', _ATOM
+        if found == "shadow":
+            value = str(_first_field(data))
+            return _py_str(_MENU_VALUES.get(value, value)), _ATOM
+        if found == "lit":
+            return _py_str(data[1] if len(data) > 1 else ""), _ATOM
+        return self._value(found, data)
+
+    def _color(self, block, name):
+        found, data = self._input(block, name)
+        if found == "empty":
+            return '"#000000"', _ATOM
+        if found == "lit":
+            return _color_code(data[1] if len(data) > 1 else "")
+        if found == "shadow":
+            return _color_code(_first_field(data))
+        return self._value(found, data)
+
+    def _field(self, block, name):
+        """A dropdown's chosen value, from a field or from the menu block in an input."""
+        value = (block.get("fields") or {}).get(name)
+        if value is not None:
+            return value[0] if isinstance(value, list) and value else value
+        found, data = self._input(block, name)
+        if found == "shadow":
+            return _first_field(data)
+        if found == "lit":
+            return data[1] if len(data) > 1 else ""
+        if found == "empty":
+            return ""
+        raise _Unsupported(f"a changing {name.lower()} menu")
+
+    def _ref_field(self, block, name, is_list, assign=False):
+        value = (block.get("fields") or {}).get(name) or ["", None]
+        return self._ref(value[0], value[1] if len(value) > 1 else None, is_list, assign)
+
+    def _ref(self, name, ident, is_list, assign=False):
+        """The Python name of a variable or list. Scratch finds it by id first, then by name."""
+        own = self.lists if is_list else self.vars
+        stage = self.project.stage_lists if is_list else self.project.stage_vars
+        used = self.used_stage_lists if is_list else self.used_stage_vars
+        item = own.get(ident)
+        if item is None and not self.is_stage and ident in stage:
+            item = used.setdefault(ident, stage[ident])
+        if item is None:
+            item = next((each for each in own.values() if each.scratch == name), None)
+        if item is None and not self.is_stage:
+            for key, each in stage.items():
+                if each.scratch == name:
+                    item = used.setdefault(key, each)
+                    break
+        if item is None:
+            # Scratch makes a missing variable when it loads the project. Kitty declares it.
+            key = ident or f"missing {name}"
+            item = own[key] = _new_item(self.names, [str(name), [] if is_list else 0], False, is_list)
+        if assign and not is_list:
+            self.assigned.add(item.py)
+        return item.py
+
+    def _broadcast(self, block, name):
+        found, data = self._input(block, name)
+        if found == "lit":
+            return data[1] if len(data) > 1 else ""
+        if found == "shadow":
+            return _first_field(data)
+        if found == "empty":
+            return ""
+        raise _Unsupported("a broadcast whose message changes")
+
+    # -- kitty.<name>(...) blocks ----------------------------------------------
+
+    def _spec(self, block):
+        choices = _BY_OPCODE.get(block.get("opcode"))
+        if not choices:
+            return None
+        for name, spec in choices:
+            if all(str(self._field(block, field)).lower() == str(raw).lower() for field, raw in spec.fixed_fields):
+                return name, spec
+        return choices[0]
+
+    def _spec_args(self, block, spec):
+        return [self._slot(block, param[1], param[2])[0] for param in spec.params]
+
+    def _slot(self, block, scratch, slot):
+        if slot in ("number", "positive", "whole", "integer", "angle"):
+            return self._number(block, scratch)
+        if slot == "text":
+            return self._text(block, scratch)
+        if slot == "boolean":
+            return self._condition(block, scratch)
+        if slot == "color":
+            return self._color(block, scratch)
+        if slot.startswith("menu:"):
+            return self._menu(block, scratch)
+        if slot.startswith("field:"):
+            value = str(self._field(block, scratch))
+            kind = slot.split(":", 1)[1]
+            if kind in ("effect", "sound_effect", "current"):
+                value = value.lower()
+            elif kind == "stop" and value.startswith("other scripts"):
+                value = "other scripts"
+            return _py_str(value), _ATOM
+        if slot == "variable":
+            return self._ref_field(block, scratch, False), _ATOM
+        if slot == "list":
+            return self._ref_field(block, scratch, True), _ATOM
+        if slot == "broadcast_input":
+            return _py_str(self._broadcast(block, scratch)), _ATOM
+        raise _Unsupported(f"the {slot} input of {block.get('opcode')}")
+
+    # -- reporters ---------------------------------------------------------------
+
+    def _reporter(self, block_id):
+        block = self.blocks.get(block_id)
+        if isinstance(block, list) and block:
+            if block[0] in (12, 13):
+                return self._value("var" if block[0] == 12 else "list", block)
+            return _text_literal(block[1] if len(block) > 1 else "")
+        if not isinstance(block, dict):
+            raise _Unsupported("a block that is missing from the project")
+        if block_id in self.comments and self.pending:
+            self.pending[-1].append(self.comments[block_id])
+        opcode = block.get("opcode")
+        if opcode == "data_variable":
+            return self._ref_field(block, "VARIABLE", False), _ATOM
+        if opcode == "data_listcontents":
+            return f'kitty.join({self._ref_field(block, "LIST", True)}, "")', _ATOM
+        if opcode in ("argument_reporter_string_number", "argument_reporter_boolean"):
+            name = str(self._field(block, "VALUE"))
+            if name in self.params:
+                return self.params[name], _ATOM
+            return ("False" if opcode == "argument_reporter_boolean" else "0"), _ATOM
+        if opcode in _ARITHMETIC:
+            symbol, prec, call = _ARITHMETIC[opcode]
+            left = self._number(block, "NUM1")
+            right = self._number(block, "NUM2")
+            if call and right[0] in ("0", "0.0"):
+                # Kitty works out literal arithmetic while it compiles, and x / 0 would stop the build.
+                return f"kitty.{call}({left[0]}, {right[0]})", _ATOM
+            return f"{_wrap(left, prec)} {symbol} {_wrap(right, prec, right=True)}", prec
+        if opcode in _COMPARE:
+            left = self._text(block, "OPERAND1")
+            right = self._text(block, "OPERAND2")
+            return f"{_wrap(left, _CMP)} {_COMPARE[opcode]} {_wrap(right, _CMP, right=True)}", _CMP
+        if opcode in ("operator_and", "operator_or"):
+            prec = _AND if opcode == "operator_and" else _OR
+            word = "and" if opcode == "operator_and" else "or"
+            left = self._condition(block, "OPERAND1")
+            right = self._condition(block, "OPERAND2")
+            return f"{_wrap(left, prec)} {word} {_wrap(right, prec, right=True)}", prec
+        if opcode == "operator_not":
+            return f"not {_wrap(self._condition(block, 'OPERAND'), _NOT)}", _NOT
+        if opcode == "operator_join":
+            return f"kitty.join({self._text(block, 'STRING1')[0]}, {self._text(block, 'STRING2')[0]})", _ATOM
+        if opcode == "operator_letter_of":
+            return f"kitty.letter({self._number(block, 'LETTER')[0]}, {self._text(block, 'STRING')[0]})", _ATOM
+        if opcode == "operator_length":
+            return f"len({self._text(block, 'STRING')[0]})", _ATOM
+        if opcode == "operator_contains":
+            text = self._text(block, "STRING1")
+            part = self._text(block, "STRING2")
+            return f"{_wrap(part, _CMP)} in {_wrap(text, _CMP, right=True)}", _CMP
+        if opcode == "operator_round":
+            return f"round({self._number(block, 'NUM')[0]})", _ATOM
+        if opcode == "operator_mathop":
+            operation = str(self._field(block, "OPERATOR")).lower()
+            if operation not in _MATH_CALLS:
+                raise _Unsupported(f"the math operation {operation!r}")
+            return f"{_MATH_CALLS[operation]}({self._number(block, 'NUM')[0]})", _ATOM
+        if opcode in _LIST_REPORTERS:
+            return _LIST_REPORTERS[opcode](self, block)
+        found = self._spec(block)
+        if found is not None and found[1].shape in ("reporter", "boolean"):
+            name, spec = found
+            return f"kitty.{name}({', '.join(self._spec_args(block, spec))})", _ATOM
+        raise _Unsupported(f"{opcode} has no Kitty block")
+
+    # -- lists. Scratch counts items from 1, and Kitty's Python from 0. ------------
+
+    def _index(self, block):
+        """("menu", "last"/"all"/"random"), ("number", n), or ("expr", code for the Python index)."""
+        found, data = self._input(block, "INDEX")
+        raw = None
+        if found == "lit":
+            raw = data[1] if len(data) > 1 else ""
+        elif found == "shadow":
+            raw = _first_field(data)
+        elif found == "empty":
+            raw = ""
+        if raw is not None:
+            text = str(raw).strip()
+            if text in ("last", "all", "random"):
+                return "menu", text
+            number = _js_number(text)
+            return "number", math.floor(number) if number is not None and math.isfinite(number) else 0
+        if found == "block":
+            target = self.blocks.get(data)
+            if isinstance(target, dict) and target.get("opcode") == "operator_add":
+                # item (i + 1) of list is items[i].
+                for one, other in (("NUM1", "NUM2"), ("NUM2", "NUM1")):
+                    side, side_data = self._input(target, one)
+                    literal = side_data[1] if side == "lit" and len(side_data) > 1 else (
+                        _first_field(side_data) if side == "shadow" else None)
+                    if literal is not None and _js_number(literal) == 1:
+                        return "expr", self._number(target, other)[0]
+        return "expr", f"{_wrap(self._value(found, data), _ADD)} - 1"
+
+    def _list_add(self, block):
+        return f"{self._ref_field(block, 'LIST', True)}.append({self._text(block, 'ITEM')[0]})"
+
+    def _list_delete(self, block):
+        items = self._ref_field(block, "LIST", True)
+        kind, index = self._index(block)
+        if kind == "menu":
+            return {"all": f"{items}.clear()", "last": f"{items}.pop()"}.get(index, f'kitty.delete("random", {items})')
+        if kind == "number":
+            if index < 1:
+                return f"pass  # delete item {index} of {items}: Scratch has no item there"
+            return f"{items}.pop({index - 1})"
+        return f"{items}.pop({index})"
+
+    def _list_insert(self, block):
+        items = self._ref_field(block, "LIST", True)
+        item = self._text(block, "ITEM")[0]
+        kind, index = self._index(block)
+        if kind == "menu":
+            if index == "last":
+                return f"{items}.append({item})"
+            if index == "random":
+                return f'kitty.insert({item}, "random", {items})'
+            return f"pass  # insert at all of {items}: Scratch skips this"
+        if kind == "number":
+            if index < 1:
+                return f"pass  # insert at {index} of {items}: Scratch skips this"
+            return f"{items}.insert({index - 1}, {item})"
+        return f"{items}.insert({index}, {item})"
+
+    def _list_replace(self, block):
+        items = self._ref_field(block, "LIST", True)
+        item = self._text(block, "ITEM")[0]
+        kind, index = self._index(block)
+        if kind == "menu":
+            if index == "all":
+                return f"pass  # replace item all of {items}: Scratch skips this"
+            return f"kitty.replace({_py_str(index)}, {items}, {item})"
+        if kind == "number":
+            if index < 1:
+                return f"pass  # replace item {index} of {items}: Scratch has no item there"
+            return f"{items}[{index - 1}] = {item}"
+        return f"{items}[{index}] = {item}"
+
+    def _list_item(self, block):
+        items = self._ref_field(block, "LIST", True)
+        kind, index = self._index(block)
+        if kind == "menu":
+            return ('""', _ATOM) if index == "all" else (f"kitty.item_of({_py_str(index)}, {items})", _ATOM)
+        if kind == "number":
+            return ('""', _ATOM) if index < 1 else (f"{items}[{index - 1}]", _ATOM)
+        return f"{items}[{index}]", _ATOM
+
+    def _list_item_number(self, block):
+        items = self._ref_field(block, "LIST", True)
+        return f"{items}.index({self._text(block, 'ITEM')[0]}) + 1", _ADD
+
+    def _list_length(self, block):
+        return f"len({self._ref_field(block, 'LIST', True)})", _ATOM
+
+    def _list_contains(self, block):
+        item = self._text(block, "ITEM")
+        return f"{_wrap(item, _CMP)} in {self._ref_field(block, 'LIST', True)}", _CMP
+
+
+_LIST_STATEMENTS = {
+    "data_addtolist": _TargetWriter._list_add,
+    "data_deleteoflist": _TargetWriter._list_delete,
+    "data_deletealloflist": lambda writer, block: f"{writer._ref_field(block, 'LIST', True)}.clear()",
+    "data_insertatlist": _TargetWriter._list_insert,
+    "data_replaceitemoflist": _TargetWriter._list_replace,
+}
+_LIST_REPORTERS = {
+    "data_itemoflist": _TargetWriter._list_item,
+    "data_itemnumoflist": _TargetWriter._list_item_number,
+    "data_lengthoflist": _TargetWriter._list_length,
+    "data_listcontainsitem": _TargetWriter._list_contains,
+}
+# opcode: (Python operator, precedence, kitty block to use when dividing by a literal 0)
+_ARITHMETIC = {
+    "operator_add": ("+", _ADD, None),
+    "operator_subtract": ("-", _ADD, None),
+    "operator_multiply": ("*", _MUL, None),
+    "operator_divide": ("/", _MUL, "divide"),
+    "operator_mod": ("%", _MUL, "mod"),
+}
+_COMPARE = {"operator_gt": ">", "operator_lt": "<", "operator_equals": "=="}
+
+
+def _coord(block, index):
+    if len(block) > index and isinstance(block[index], (int, float)):
+        return block[index]
+    return 0
+
+
 def main(source=None, folder=None):
+    import sys
+
     if source is None:
-        import sys
         if len(sys.argv) < 2:
-            print("usage: py -m kitty decompile <file.sb3> [directory]", file=sys.stderr)
+            print("usage: kitty decomp <file.sb3> [folder]", file=sys.stderr)
             return 2
         source = sys.argv[1]
         folder = sys.argv[2] if len(sys.argv) > 2 else None
+    warnings = []
     try:
-        print(decomp(source, folder))
-        return 0
-    except (FileNotFoundError, ValueError, zipfile.BadZipFile) as exc:
-        import sys
+        result = decomp(source, folder, warnings)
+    except (FileNotFoundError, FileExistsError, ValueError, zipfile.BadZipFile) as exc:
         print(exc, file=sys.stderr)
         return 1
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    print(result)
+    return 0
 
 
 if __name__ == "__main__":

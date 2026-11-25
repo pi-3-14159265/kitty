@@ -407,6 +407,8 @@ def comp(scripts, output=None, warnings=None):
         stage = Target(project, "Stage", True, paths[0])
         stage.finish_assets()
     built = [stage.emit(0)]
+    # start_with(layer=...) orders sprites from the back. Sprites without one keep their order, in front.
+    sprites.sort(key=lambda sprite: sprite.start.get("layer", _math.inf))
     built.extend(sprite.emit(index) for index, sprite in enumerate(sprites, start=1))
     payload = {
         "targets": built,
@@ -793,6 +795,15 @@ def _note_import(stmt, path, aliases, imported, math_aliases, math_names, warnin
                 warnings.append(message)
 
 
+def _unused_name(name, taken):
+    if name not in taken:
+        return name
+    number = 2
+    while f"{name} {number}" in taken:
+        number += 1
+    return f"{name} {number}"
+
+
 def _signature(label, params):
     pieces = [label]
     for param in params:
@@ -1067,6 +1078,9 @@ class Target:
         self.frame_depth = 0
         self.heaps = {}
         self.ephemeral_stack = []
+        self.start = {}
+        self.start_node = None
+        self.proccodes = set()
 
     def prepare_sprite(self, inst):
         cls = inst.blueprint
@@ -1453,6 +1467,7 @@ class Target:
             self._add_default_costume()
 
     def emit(self, layer):
+        start = self.start
         data = {
             "isStage": self.is_stage,
             "name": "Stage" if self.is_stage else self.name,
@@ -1461,30 +1476,40 @@ class Target:
             "broadcasts": self.project.broadcasts if self.is_stage else {},
             "blocks": self.blocks,
             "comments": {},
-            "currentCostume": 0,
+            "currentCostume": self._start_costume(),
             "costumes": self.costumes,
             "sounds": self.sounds,
-            "volume": 100,
+            "volume": start.get("volume", 100),
             "layerOrder": layer,
         }
         if self.is_stage:
             data.update({
-                "tempo": 60,
+                "tempo": start.get("tempo", 60),
                 "videoTransparency": 50,
                 "videoState": "on",
                 "textToSpeechLanguage": None,
             })
         else:
             data.update({
-                "visible": True,
-                "x": 0,
-                "y": 0,
-                "size": 100,
-                "direction": 90,
-                "draggable": False,
-                "rotationStyle": "all around",
+                "visible": start.get("visible", True),
+                "x": start.get("x", 0),
+                "y": start.get("y", 0),
+                "size": start.get("size", 100),
+                "direction": start.get("direction", 90),
+                "draggable": start.get("draggable", False),
+                "rotationStyle": start.get("rotation_style", "all around"),
             })
         return data
+
+    def _start_costume(self):
+        name = self.start.get("backdrop" if self.is_stage else "costume")
+        if name is None:
+            return 0
+        for index, costume in enumerate(self.costumes):
+            if costume["name"] == name:
+                return index
+        kind = "backdrop" if self.is_stage else "costume"
+        self._error(self.start_node, f"start_with {kind} {name!r} is not a {kind} of {self.name}")
 
     def _emitted_vars(self):
         if self.is_stage:
@@ -1617,17 +1642,41 @@ class Target:
             if not isinstance(file_name, str):
                 self._error(call, f"{kind} needs a file path")
             resolution = kwargs.get("resolution")
-            if kind == "sound" and resolution is not None:
-                self._error(call, "resolution belongs on a costume or a backdrop")
-            self._load_media(kind, file_name, label, call, resolution)
+            center = kwargs.get("center")
+            if kind == "sound" and (resolution is not None or center is not None):
+                self._error(call, "resolution and center belong on a costume or a backdrop")
+            if center is not None:
+                if (
+                    not isinstance(center, list) or len(center) != 2
+                    or any(isinstance(item, bool) or not _is_number(item) for item in center)
+                ):
+                    self._error(call, "center is two numbers, as in center=(32, 32)")
+                center = tuple(center)
+            self._load_media(kind, file_name, label, call, resolution, center)
+        elif kind == "start_with":
+            if args:
+                self._error(call, "start_with takes names, as in kitty.start_with(x=10, y=0)")
+            self._set_start(kwargs, call)
         else:
             self._error(call, f"unknown declaration {kind}")
 
     def _bind_var(self, py_name, scratch, initial, shared, show, node, keep_local=False):
-        if scratch in self.scratch_vars or scratch in self.project.shared_vars_by_name():
-            self._error(node, f"variable {scratch!r} is already declared")
+        if py_name is None and keep_local:
+            scratch = _unused_name(scratch, self.scratch_vars)
         if self.is_stage and not keep_local:
             shared = True
+        existing = self.project.shared_vars_by_name().get(scratch)
+        if shared and not keep_local and existing is not None and scratch not in self.scratch_vars:
+            # Another file declared this variable for all sprites. This file uses the same one.
+            if existing.initial != _scratch_literal(initial):
+                self._error(node, f"variable {scratch!r} for all sprites starts at {existing.initial!r} in another file")
+            self.scratch_vars[scratch] = existing
+            self._bind_shared_name(py_name, existing, node)
+            if show:
+                self._add_monitor("data_variable", "VARIABLE", existing, False)
+            return existing
+        if scratch in self.scratch_vars or existing is not None:
+            self._error(node, f"variable {scratch!r} is already declared")
         var = Var(scratch, self.project.ids.var(), _scratch_literal(initial), shared)
         if keep_local and self.frame_arg is not None:
             lst = self._bind_list(None, scratch, [], False, False, node, keep_local=True, frame_items=False)
@@ -1646,8 +1695,19 @@ class Target:
         else:
             self.local_vars[var.vid] = var
         if show:
-            self.project.monitors.append(self._monitor("data_variable", "VARIABLE", var, False))
+            self._add_monitor("data_variable", "VARIABLE", var, False)
         return var
+
+    def _bind_shared_name(self, py_name, symbol, node):
+        if py_name:
+            if py_name in self.symbols and self.symbols[py_name] is not symbol:
+                self._error(node, f"{py_name} is already defined")
+            self.symbols[py_name] = symbol
+
+    def _add_monitor(self, opcode, param, item, is_list):
+        ident = item.lid if is_list else item.vid
+        if not any(monitor["id"] == ident for monitor in self.project.monitors):
+            self.project.monitors.append(self._monitor(opcode, param, item, is_list))
 
     def _bind_list(self, py_name, scratch, initial, shared, show, node, frozen=False, unique=False, keep_local=False, frame_items=None, ref=False, seed=False):
         try:
@@ -1660,8 +1720,22 @@ class Target:
                 frozen=frozen, unique=unique, keep_local=keep_local, seed=seed, shape=shape,
             )
         items = [_scratch_literal(item) for item in atoms]
+        if py_name is None and keep_local:
+            # Kitty's own lists take a free name, so they never share one with a list the script declared.
+            scratch = _unused_name(scratch, self.scratch_lists)
         if self.is_stage and not keep_local:
             shared = True
+        if shared and not keep_local and scratch not in self.scratch_lists:
+            existing = next((item for item in self.project.shared_lists.values() if item.name == scratch), None)
+            if existing is not None:
+                # Another file declared this list for all sprites. This file uses the same one.
+                if existing.initial != items or existing.shape != shape:
+                    self._error(node, f"list {scratch!r} for all sprites starts differently in another file")
+                self.scratch_lists[scratch] = existing
+                self._bind_shared_name(py_name, existing, node)
+                if show:
+                    self._add_monitor("data_listcontents", "LIST", existing, True)
+                return existing
         lst = Lst(scratch, self.project.ids.lst(), items, shared, shape)
         lst.frozen = frozen
         lst.unique = unique
@@ -1675,7 +1749,7 @@ class Target:
         else:
             self.local_lists[lst.lid] = lst
         if show:
-            self.project.monitors.append(self._monitor("data_listcontents", "LIST", lst, True))
+            self._add_monitor("data_listcontents", "LIST", lst, True)
         if frame_items is None:
             frame_items = keep_local and self.frame_arg is not None
         if frame_items:
@@ -1794,7 +1868,7 @@ class Target:
         heap["ops"]["retain"] = self._ref_proc(f".ref {kind} retain", [ident], lambda: self._ref_retain_body(heap, ident, node), node)
 
     def _ref_proc(self, label, params, build, node):
-        proc = Proc(label, params, True, _signature(label, params))
+        proc = Proc(label, params, True, self._proccode(label, params))
         saved = self.frame_arg
         self.frame_arg = None
         try:
@@ -1938,7 +2012,7 @@ class Target:
     def _span_proc(self, lst, op, names, build, node):
         params = [Arg(name, f"arg{index}", False) for index, name in enumerate(names)]
         label = f".span {op} {lst.name}"
-        proc = Proc(label, params, True, _signature(label, params))
+        proc = Proc(label, params, True, self._proccode(label, params))
         saved = self.frame_arg
         self.frame_arg = None
         try:
@@ -2162,7 +2236,35 @@ class Target:
             monitor["isDiscrete"] = True
         return monitor
 
-    def _load_media(self, kind, file_name, label, node, resolution=None):
+    _START_KEYS = {
+        False: {"x", "y", "direction", "size", "visible", "costume", "rotation_style", "draggable", "volume", "layer"},
+        True: {"backdrop", "volume", "tempo"},
+    }
+
+    def _set_start(self, settings, node):
+        allowed = self._START_KEYS[self.is_stage]
+        for key, value in settings.items():
+            if key not in allowed:
+                owner = "the stage" if self.is_stage else "a sprite"
+                self._error(node, f"start_with on {owner} takes {', '.join(sorted(allowed))}")
+            if key in {"visible", "draggable"}:
+                if not isinstance(value, bool):
+                    self._error(node, f"{key} is True or False")
+            elif key in {"costume", "backdrop"}:
+                if not isinstance(value, str):
+                    self._error(node, f"{key} is a {key} name")
+            elif key == "rotation_style":
+                value = _normalize_field("field:rotation", value if isinstance(value, str) else "", node)
+            elif isinstance(value, bool) or not _is_number(value):
+                self._error(node, f"{key} is a number")
+            elif key == "layer" and (value != int(value) or value < 1):
+                self._error(node, "layer is a whole number from 1, the back layer")
+            if key in self.start:
+                self._error(node, f"{key} is already set")
+            self.start[key] = value
+        self.start_node = node
+
+    def _load_media(self, kind, file_name, label, node, resolution=None, given_center=None):
         if kind == "backdrop" and not self.is_stage:
             self._error(node, "backdrops belong on the stage (stage.py or @kitty.stage)")
         source = Path(file_name)
@@ -2195,7 +2297,7 @@ class Target:
                 self._error(node, f"{source.name}: a {kind} is an svg, png, or jpg file")
             if resolution not in (None, 1) or isinstance(resolution, bool):
                 self._error(node, "resolution is for png and jpg images. Scratch draws an svg at any size")
-            ext, scale, center = "svg", 1, _svg_center(data)
+            ext, scale, center = "svg", 1, given_center or _svg_center(data)
             if center is None:
                 self.project.warnings.append(
                     f"{self.path}:{node.lineno}: {source.name} has no viewBox, or width and height, "
@@ -2206,7 +2308,7 @@ class Target:
             scale = 1 if resolution is None else resolution
             if isinstance(scale, bool) or scale not in (1, 2):
                 self._error(node, "resolution is 1 or 2")
-            center = (width / 2, height / 2)
+            center = given_center or (width / 2, height / 2)
             shown_width, shown_height = width / scale, height / scale
             if shown_width > _STAGE_WIDTH or shown_height > _STAGE_HEIGHT:
                 self.project.warnings.append(
@@ -2352,9 +2454,9 @@ class Target:
                 self._error(dec, "when_timer needs a number")
             return "timer", {"value": args[0]}
         if name == "block":
-            return "block", {"warp": bool(kwargs.get("warp", False))}
+            return "block", {"warp": bool(kwargs.get("warp", True))}
         if name in {"number", "boolean"}:
-            return "block", {"warp": bool(kwargs.get("warp", False)), "returns": name}
+            return "block", {"warp": bool(kwargs.get("warp", True)), "returns": name}
         self._error(fn, f"unknown decorator {name}")
 
     def _make_hat(self, kind, info, node):
@@ -2387,6 +2489,21 @@ class Target:
             self._literal_input(block, "VALUE", "positive", info["value"])
             return block
         self._error(node, f"unknown hat {kind}")
+
+    def _proccode(self, label, params):
+        """A custom block's proccode, unique in this sprite.
+
+        Scratch finds a custom block by its proccode. Two blocks with one proccode,
+        such as greet's inner "greet run" and a function named greet_run, would
+        call each other's definitions.
+        """
+        code = _signature(label, params)
+        number = 2
+        while code in self.proccodes:
+            code = _signature(f"{label} {number}", params)
+            number += 1
+        self.proccodes.add(code)
+        return code
 
     def _register_proc(self, fn, display=None, proc_key=None, as_method=None, defer_results=False):
         key = proc_key or fn.name
@@ -2428,7 +2545,7 @@ class Target:
             kw = KwArgs(kw_name, count, pairs)
         for scope in self.scope_args:
             add_param(scope.name, False, NO_DEFAULT)
-        proc = Proc(key, params, True, _signature(label, params))
+        proc = Proc(key, params, info.get("warp", True), self._proccode(label, params))
         proc.user_params = user_params
         proc.scope_args = [param for param in params if param.name.startswith(".frame")]
         proc.star = star
@@ -2628,7 +2745,7 @@ class Target:
             self.needs_done = previous_done
             self.done_name = previous_done_name
         impl_params = list(proc.params) + [proc.frame_arg]
-        impl = Proc(f"{proc.name} .run", impl_params, True, _signature(f"{proc.label} run", impl_params))
+        impl = Proc(f"{proc.name} .run", impl_params, proc.warp, self._proccode(f"{proc.label} run", impl_params))
         proc.impl = impl
         self._define_stack(impl, body, fn)
         self._define_entry(proc, fn)
@@ -2663,7 +2780,7 @@ class Target:
             argumentids=[param.arg_id for param in proc.params],
             argumentnames=[param.name for param in proc.params],
             argumentdefaults=[_input_default(param) for param in proc.params],
-            warp=True,
+            warp=proc.warp,
         )
         for param in proc.params:
             opcode = "argument_reporter_boolean" if param.boolean else "argument_reporter_string_number"
@@ -2998,7 +3115,7 @@ class Target:
             copied.default = param.default
             params.append(copied)
         label = f".use {number}"
-        stub = Proc(label, params, True, _signature(label, params))
+        stub = Proc(label, params, proc.warp, self._proccode(label, params))
         call = self._call_block(proc, [Value("arg", param) for param in params], node)
         copies = [
             self._store_value(plain, Value("var", result), node)
@@ -6026,7 +6143,7 @@ class Target:
             copied.default = param.default
             params.append(copied)
         label = f".use {number}"
-        stub = Proc(label, params, True, _signature(label, params))
+        stub = Proc(label, params, proc.warp, self._proccode(label, params))
         saved = self.frame_arg
         self.frame_arg = None
         try:
@@ -7204,10 +7321,15 @@ def _as_text(value):
 
 
 def _format_number(value):
+    if isinstance(value, float) and _math.isinf(value):
+        return "Infinity" if value > 0 else "-Infinity"
+    if isinstance(value, float) and _math.isnan(value):
+        return "NaN"
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     if isinstance(value, float):
-        return format(value, "g")
+        # The shortest text that reads back as the same number. format "g" kept only 6 digits.
+        return repr(value)
     return str(value)
 
 

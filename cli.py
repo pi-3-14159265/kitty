@@ -53,9 +53,13 @@ def main(argv=None):
     build.add_argument("scripts", nargs="+", help="Python files or a directory")
     build.add_argument("-o", "--output", help="output .sb3 path")
 
-    decompile = subparsers.add_parser("decompile", help="decompile .sb3 into text and assets")
+    decompile = subparsers.add_parser(
+        "decomp",
+        aliases=["decompile"],
+        help="decompile .sb3 into a Kitty Python project folder",
+    )
     decompile.add_argument("source", help="Scratch .sb3 file")
-    decompile.add_argument("directory", nargs="?", help="output directory")
+    decompile.add_argument("directory", nargs="?", help="new or empty output folder")
 
     args = parser.parse_args(argv)
     if args.command == "version":

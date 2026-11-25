@@ -110,7 +110,7 @@ def born():
 
 Define a custom block that you call by name. It does not return an answer. A `def` with no decorator and no `return` is the same kind of block. A default of `True` or `False`, or a `bool` note, makes a boolean input. Other defaults are numbers or text. A list or a dictionary cannot be a default. See [Defaults](functions.md#defaults).
 
-The block runs without screen refresh until it finishes or reaches `kitty.wait`. `warp=True` and `warp=False` do not change that. See [Screen refresh](functions.md#screen-refresh).
+The block runs without screen refresh until it finishes or reaches `kitty.wait`. `@kitty.block(warp=False)` draws the screen after each pass of a loop instead, like a Scratch custom block with "Run without screen refresh" off. See [Screen refresh](functions.md#screen-refresh).
 
 ```python
 @kitty.block
@@ -122,7 +122,7 @@ def greet(name, loud=False):
 
 Define a custom block that returns a number or text. The body uses `return`. A `def` that returns a number or text is the same kind of block, even without this decorator. See [Answers](functions.md#answers).
 
-The block runs without screen refresh until it finishes or reaches `kitty.wait`. `warp` does not change that.
+The block runs without screen refresh until it finishes or reaches `kitty.wait`. `warp=False` draws the screen after each pass of a loop.
 
 ```python
 @kitty.number
@@ -134,7 +134,7 @@ def double(n):
 
 Define a custom block that returns true or false. Use it in `if`. The body uses `return` with a comparison, `and`, `or`, `not`, `True`, or `False`. See [Answers](functions.md#answers).
 
-The block runs without screen refresh until it finishes or reaches `kitty.wait`. `warp` does not change that.
+The block runs without screen refresh until it finishes or reaches `kitty.wait`. `warp=False` draws the screen after each pass of a loop.
 
 ```python
 @kitty.boolean

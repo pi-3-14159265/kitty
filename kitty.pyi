@@ -1174,14 +1174,17 @@ def variable(name: str, value: Value = 0, *, shared: bool = False, show: bool = 
     """
     ...
 
-def list(name: str, value: Any = None, *, shared: bool = False, show: bool = False) -> Any:
+def list(name: str, value: Any = None, *, shared: bool = False, show: bool = False, scratch: bool = False) -> Any:
     """Declare a list when you want a Scratch name, a monitor, or a shared list.
 
     Args:
         name: The Scratch name.
         value: The starting items. Omit it for an empty list.
-        shared: True puts the list on the stage.
+        shared: True puts the list on the stage, for every sprite.
         show: True shows the monitor.
+        scratch: True keeps the items in this one Scratch list, used by
+            Scratch's own list blocks, as `kitty decomp` writes. Every sprite
+            that declares the same shared list with the same items uses it.
     """
     ...
 
@@ -1196,7 +1199,13 @@ def dict(name: str, value: Any = None, *, shared: bool = False, show: bool = Fal
     """
     ...
 
-def costume(path: str, *, name: str | None = None, resolution: Literal[1, 2] = 1) -> None:
+def costume(
+    path: str,
+    *,
+    name: str | None = None,
+    resolution: Literal[1, 2] = 1,
+    center: tuple[Number, Number] | None = None,
+) -> None:
     """Add a costume file to this sprite. svg, png, and jpg work.
 
     The middle of the image sits on the sprite's x and y. A png or jpg
@@ -1208,6 +1217,9 @@ def costume(path: str, *, name: str | None = None, resolution: Literal[1, 2] = 1
         resolution: png and jpg only. 2 shows the image at half its pixel
             size, for art drawn at double size, such as images taken
             out of a Scratch project.
+        center: The image point that sits on the sprite's x and y, and
+            that the sprite turns around, in image pixels from the
+            top-left. Omit it to use the middle of the image.
     """
     ...
 
@@ -1220,7 +1232,13 @@ def sound(path: str, *, name: str | None = None) -> None:
     """
     ...
 
-def backdrop(path: str, *, name: str | None = None, resolution: Literal[1, 2] = 1) -> None:
+def backdrop(
+    path: str,
+    *,
+    name: str | None = None,
+    resolution: Literal[1, 2] = 1,
+    center: tuple[Number, Number] | None = None,
+) -> None:
     """Add a backdrop file to the stage. svg, png, and jpg work.
 
     The middle of the image sits on the middle of the stage. A 480 x 360
@@ -1231,6 +1249,8 @@ def backdrop(path: str, *, name: str | None = None, resolution: Literal[1, 2] = 
         name: The Scratch name. Omit it to use the file name.
         resolution: png and jpg only. 2 shows the image at half its pixel
             size, so a 960 x 720 backdrop fills the stage.
+        center: The image point that sits on the middle of the stage, in
+            image pixels from the top-left. Omit it to use the middle.
     """
     ...
 
@@ -1239,6 +1259,43 @@ def sprite_name(name: str) -> None:
 
     Args:
         name: The name Scratch shows.
+    """
+    ...
+
+def start_with(
+    *,
+    x: Number | None = None,
+    y: Number | None = None,
+    direction: Number | None = None,
+    size: Number | None = None,
+    visible: bool | None = None,
+    costume: str | None = None,
+    rotation_style: RotationStyle | None = None,
+    draggable: bool | None = None,
+    volume: Number | None = None,
+    layer: int | None = None,
+    backdrop: str | None = None,
+    tempo: Number | None = None,
+) -> None:
+    """How this sprite, or the stage, starts when the project opens.
+
+    This is not a block. It is what the Scratch editor saves with the
+    sprite. Leave out anything that should keep its usual start.
+
+    Args:
+        x: Sprite only. The start x position. The default is 0.
+        y: Sprite only. The start y position. The default is 0.
+        direction: Sprite only. The default is 90, pointing right.
+        size: Sprite only. The size in percent. The default is 100.
+        visible: Sprite only. False starts the sprite hidden.
+        costume: Sprite only. The costume name to start with.
+        rotation_style: Sprite only. The default is "all around".
+        draggable: Sprite only. True lets the player drag it.
+        volume: The volume in percent. The default is 100.
+        layer: Sprite only. 1 is the back layer. Sprites without a layer
+            go in front, in file order.
+        backdrop: Stage only. The backdrop name to start with.
+        tempo: Stage only. The music tempo. The default is 60.
     """
     ...
 

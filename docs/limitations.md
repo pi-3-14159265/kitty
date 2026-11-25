@@ -79,6 +79,11 @@ stage, in `stage.py`, or on a `kitty.Stage` class.
 
 See [Bitmap images (PNG and JPG)](costumes-sounds-and-names.md#bitmap-images-png-and-jpg).
 
+## Decompiling
+
+`kitty decomp` keeps blocks Kitty has no Python for as comments and warns
+about each one. See [Turn a Scratch project into Python](decompile.md#what-stays-a-comment).
+
 ## Class and sprite limits
 
 - Constructor arguments can be numbers, text, or lists.
@@ -92,7 +97,8 @@ See [Bitmap images (PNG and JPG)](costumes-sounds-and-names.md#bitmap-images-png
 
 ## Function limits
 
-Custom blocks always run without screen refresh. `warp=True` is ignored.
+Custom blocks run without screen refresh unless they are written with
+`warp=False`, as in `@kitty.block(warp=False)`.
 `kitty.wait(...)` creates pauses even inside a custom block.
 
 Additional function limits:

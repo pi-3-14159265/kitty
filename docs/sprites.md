@@ -96,6 +96,31 @@ class Cat(kitty.Sprite):
         score += 1
 ```
 
+With one file for each sprite, declare the variable in every file that uses it, with the same starting value. They all use the one variable on the stage. A variable in `stage.py` is already for all sprites:
+
+```python
+# stage.py
+import kitty
+
+score = 0
+```
+
+```python
+# Cat.py
+import kitty
+
+score = kitty.variable("score", 0, shared=True)
+
+@kitty.green_flag
+def start():
+    global score
+    score += 1
+```
+
+Two different starting values for one shared variable stop the build.
+
+`kitty.start_with` sets where a sprite starts when the project opens, its size, its costume, whether it shows, and its layer. See [kitty.start_with](costumes-sounds-and-names.md#kittystart_with).
+
 Every block function is also a method, so `self.say("hi")` is `kitty.say("hi")`. `self.clone()` creates a clone of this sprite. Declarations, hat decorators, `kitty.length`, `kitty.contains`, and `kitty.math` stay on `kitty`.
 
 A sprite with no costume gets a blue circle. A stage with no backdrop gets a white backdrop named `backdrop1`.

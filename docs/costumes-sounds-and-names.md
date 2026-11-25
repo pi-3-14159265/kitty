@@ -17,10 +17,13 @@ Add a costume to this sprite.
 
 **resolution:** PNG and JPG only. `1` shows one image pixel per step. `2` shows the image at half its pixel size. The default is `1`. See [Drawn at double size](#drawn-at-double-size).
 
+**center:** the point of the image that sits on the sprite's x and y, and that the sprite turns around, as `(x, y)` from the image's top-left. For a PNG or JPG it is in image pixels. Omit it to use the middle of the image.
+
 ```python
 kitty.costume("cat.svg")
 kitty.costume("cat.png", name="sitting")
 kitty.costume("cat-big.png", resolution=2)
+kitty.costume("pendulum.svg", center=(32, 0))
 kitty.switch_costume("sitting")
 ```
 
@@ -86,6 +89,39 @@ Set this sprite's name.
 
 ```python
 kitty.sprite_name("Felix")
+```
+
+### kitty.start_with
+
+How this sprite, or the stage, starts when the project opens. This is not a block: it is what the Scratch editor saves with a sprite. Leave out anything that should start as usual.
+
+**x**, **y:** where the sprite starts. The default is `0, 0`.
+
+**direction:** the default is `90`, pointing right.
+
+**size:** in percent. The default is `100`.
+
+**visible:** `False` starts the sprite hidden.
+
+**costume:** the name of the costume to start with.
+
+**rotation_style:** `"all around"`, `"left-right"`, or `"don't rotate"`.
+
+**draggable:** `True` lets the player drag the sprite.
+
+**volume:** in percent. The default is `100`.
+
+**layer:** `1` is the back layer, then `2`, and so on. Sprites without a layer go in front of these, in file order.
+
+On the stage, use **backdrop** (the name of the backdrop to start with), **volume**, and **tempo**.
+
+```python
+kitty.start_with(x=-100, y=20, size=50, costume="walk2", visible=False, layer=2)
+```
+
+```python
+# stage.py
+kitty.start_with(backdrop="night", tempo=90)
 ```
 
 ### Bitmap images (PNG and JPG)
@@ -160,7 +196,7 @@ A PNG keeps transparent pixels, so a character drawn on a transparent background
 
 Scratch stores its own bitmap costumes at double size, two image pixels per step, so they stay sharp. Use `resolution=2` for an image made that way:
 
-- a bitmap costume or backdrop taken out of a Scratch project, for example by `kitty decompile`;
+- a bitmap costume or backdrop taken out of a Scratch project, for example by `kitty decomp`;
 - a 960 x 720 backdrop;
 - art you drew at double size so it stays sharp when it grows.
 

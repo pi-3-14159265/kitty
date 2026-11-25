@@ -361,6 +361,8 @@ IMAGE_COSTUMES = [
     ("case", 'kitty.costume("box.svg")', {"dataFormat": "svg", "bitmapResolution": 1, "rotationCenterX": 22, "rotationCenterY": 16}),
     ("case", 'kitty.costume("sized.svg")', {"rotationCenterX": 20, "rotationCenterY": 10}),
     ("case", 'kitty.costume("bare.svg")', {"rotationCenterX": None, "rotationCenterY": None}),
+    ("case", 'kitty.costume("wide.png", center=(1, 2.5))', {"rotationCenterX": 1, "rotationCenterY": 2.5}),
+    ("case", 'kitty.costume("bare.svg", center=(7, 8))', {"rotationCenterX": 7, "rotationCenterY": 8}),
     ("stage", 'kitty.backdrop("wide.png", name="field")', {"name": "field", "rotationCenterX": 50, "rotationCenterY": 30}),
 ]
 
@@ -369,7 +371,8 @@ IMAGE_REJECTS = [
     ('kitty.costume("cat.gif")', "svg, png, or jpg"),
     ('kitty.costume("wide.png", resolution=3)', "resolution is 1 or 2"),
     ('kitty.costume("box.svg", resolution=2)', "resolution is for png and jpg"),
-    ('kitty.sound("ping.wav", resolution=2)', "resolution belongs on a costume"),
+    ('kitty.sound("ping.wav", resolution=2)', "resolution and center belong on a costume"),
+    ('kitty.costume("wide.png", center=5)', "center is two numbers"),
 ]
 
 # (declaration, text that must be in a warning, or None for no warning)
@@ -377,6 +380,7 @@ IMAGE_WARNINGS = [
     ('kitty.costume("huge.png")', "500 x 10, bigger than the 480 x 360 stage"),
     ('kitty.costume("huge.png", resolution=2)', None),
     ('kitty.costume("bare.svg")', "no viewBox"),
+    ('kitty.costume("bare.svg", center=(7, 8))', None),
     ('kitty.costume("box.svg")', None),
 ]
 
@@ -441,6 +445,201 @@ def compile_images():
     return failures
 
 
+NATIVE = ROOT / "tests" / "native.sb3"
+
+
+def _project_json(sb3):
+    with zipfile.ZipFile(sb3) as archive:
+        return json.loads(archive.read("project.json"))
+
+
+def _proccodes_unique(project):
+    """Scratch finds a custom block by its proccode, so two definitions must not share one."""
+    problems = []
+    for target in project["targets"]:
+        codes = [
+            block["mutation"]["proccode"]
+            for block in target["blocks"].values()
+            if isinstance(block, dict) and block.get("opcode") == "procedures_prototype"
+        ]
+        for code in sorted({code for code in codes if codes.count(code) > 1}):
+            problems.append(f"{target['name']}: two custom blocks are both {code!r}")
+    return problems
+
+
+def _names(target):
+    """Variable and list names the script chose. Kitty's own start with a dot."""
+    found = {("var", item[0]) for item in target["variables"].values()}
+    found |= {("list", item[0]) for item in target["lists"].values()}
+    return {item for item in found if not item[1].startswith(".")}
+
+
+def compile_decomp():
+    """kitty decomp writes a Kitty project that kitty build turns back into the same project."""
+    import decomp
+
+    failures = []
+    if TMP.exists():
+        shutil.rmtree(TMP)
+    TMP.mkdir()
+    try:
+        original = _project_json(SUITE)
+        failures.extend(_proccodes_unique(original))
+        folder = TMP / "suite"
+        if cli.main(["decomp", str(SUITE), str(folder)]) != 0:
+            return failures + ["kitty decomp tests/suite.sb3 failed"]
+        for name in ("Assets", "Sounds", "stage.py", "suite.py", "felix.py", "blocksAsText.txt"):
+            if not (folder / name).exists():
+                failures.append(f"decomp suite: {name} is missing")
+        try:
+            decomp.decomp(SUITE, folder)
+        except FileExistsError:
+            pass
+        else:
+            failures.append("decomp suite: wrote into a folder that already had files")
+        rebuilt = _project_json(comp(folder, TMP / "suite.sb3"))
+        failures.extend(_proccodes_unique(rebuilt))
+        before = {target["name"]: target for target in original["targets"]}
+        after = {target["name"]: target for target in rebuilt["targets"]}
+        if set(before) != set(after):
+            failures.append(f"decomp suite: sprites {sorted(before)} became {sorted(after)}")
+        for name in set(before) & set(after):
+            if [c["name"] for c in before[name]["costumes"]] != [c["name"] for c in after[name]["costumes"]]:
+                failures.append(f"decomp suite: {name} costumes changed")
+            missing = _names(before[name]) - _names(after[name])
+            if missing:
+                failures.append(f"decomp suite: {name} lost {sorted(missing)}")
+
+        warnings = []
+        folder = TMP / "native"
+        decomp.decomp(NATIVE, folder, warnings)
+        expected = ["cloud variable '☁ high'", "music_playDrumForBeats has no Kitty block"]
+        if len(warnings) != len(expected) or not all(any(e in w for w in warnings) for e in expected):
+            failures.append(f"decomp native: warnings were {warnings}")
+        hero_source = (folder / "Hero.py").read_text(encoding="utf-8")
+        for line in ("@kitty.block(warp=False)", 'bag.insert(0, "first")', "elif score == 0:", "log.append(bag[1])",
+                     'kitty.join("007", "1.50")', "kitty.costume(\"Assets/hero.svg\", center=(10, 20))"):
+            if line not in hero_source:
+                failures.append(f"decomp native: Hero.py has no {line!r}")
+        rebuilt = _project_json(comp(folder, TMP / "native.sb3"))
+        failures.extend(_proccodes_unique(rebuilt))
+        targets = {target["name"]: target for target in rebuilt["targets"]}
+        checks = [
+            ("Hero", "x", -100), ("Hero", "y", 50), ("Hero", "size", 80), ("Hero", "direction", 45),
+            ("Hero", "rotationStyle", "left-right"), ("Hero", "draggable", True), ("Hero", "volume", 60),
+            ("Hero", "currentCostume", 1), ("Hero", "layerOrder", 2), ("Helper", "visible", False),
+            ("Helper", "layerOrder", 1), ("Stage", "currentCostume", 1), ("Stage", "tempo", 90), ("Stage", "volume", 80),
+        ]
+        for name, key, want in checks:
+            if targets.get(name, {}).get(key) != want:
+                failures.append(f"decomp native: {name} {key} is {targets.get(name, {}).get(key)!r}, expected {want!r}")
+        costumes = [(c["name"], c["bitmapResolution"], c.get("rotationCenterX"), c.get("rotationCenterY"))
+                    for c in targets["Hero"]["costumes"]]
+        if costumes != [("hero", 1, 10, 20), ("small", 2, 5, 5)]:
+            failures.append(f"decomp native: Hero costumes are {costumes}")
+        walk = [block["mutation"]["warp"] for block in targets["Hero"]["blocks"].values()
+                if isinstance(block, dict) and block.get("opcode") == "procedures_prototype"
+                and block["mutation"]["proccode"].startswith("walk steps fast")]
+        if not walk or any(str(warp).lower() != "false" for warp in walk):
+            failures.append(f"decomp native: walk runs without screen refresh ({walk})")
+        shown = sorted(monitor["params"].get("VARIABLE") or monitor["params"].get("LIST") for monitor in rebuilt["monitors"])
+        if shown != ["bag", "score"]:
+            failures.append(f"decomp native: monitors are {shown}")
+    except (CompileError, OSError, KeyError, ValueError) as exc:
+        failures.append(f"decomp: {type(exc).__name__}: {exc}")
+    finally:
+        shutil.rmtree(TMP, ignore_errors=True)
+    return failures
+
+
+# Each case is a dict of file name to source. A string expect is text that must be in the error.
+LANGUAGE_CASES = [
+    (
+        "shared across files",
+        {"stage.py": "import kitty\nscore = 5\n",
+         "cat.py": "import kitty\nscore = kitty.variable('score', 5, shared=True)\n\n@kitty.green_flag\ndef go():\n    global score\n    score += 1\n"},
+        None,
+    ),
+    (
+        "shared mismatch",
+        {"stage.py": "import kitty\nscore = 5\n", "cat.py": "import kitty\nscore = kitty.variable('score', 6, shared=True)\n"},
+        "starts at",
+    ),
+    (
+        "inner block name",
+        {"cat.py": "import kitty\n\ndef greet(name):\n    kitty.say(name)\n\ndef greet_run(name, other):\n    kitty.say(other)\n\n"
+                   "@kitty.green_flag\ndef go():\n    greet('a')\n    greet_run('b', 'c')\n"},
+        None,
+    ),
+    (
+        "start_with",
+        {"cat.py": "import kitty\nkitty.start_with(x=-10, y=20, visible=False, size=50, layer=1)\n"},
+        None,
+    ),
+    ("start_with key", {"cat.py": "import kitty\nkitty.start_with(speed=3)\n"}, "start_with on a sprite takes"),
+    ("start_with stage", {"stage.py": "import kitty\nkitty.start_with(x=3)\n"}, "start_with on the stage takes"),
+    ("start_with costume", {"cat.py": "import kitty\nkitty.start_with(costume='nope')\n"}, "is not a costume"),
+]
+
+
+def compile_language():
+    failures = []
+    if TMP.exists():
+        shutil.rmtree(TMP)
+    TMP.mkdir()
+    try:
+        for number, (name, files, expect) in enumerate(LANGUAGE_CASES):
+            folder = TMP / f"case{number}"
+            folder.mkdir()
+            for file_name, source in files.items():
+                (folder / file_name).write_text(source, encoding="utf-8")
+            try:
+                project = _project_json(comp(folder, folder / "out.sb3"))
+            except CompileError as exc:
+                if expect is None or expect not in str(exc):
+                    failures.append(f"{name}: {exc}")
+                continue
+            if expect is not None:
+                failures.append(f"{name}: compiled, but it must be rejected")
+                continue
+            failures.extend(f"{name}: {problem}" for problem in _proccodes_unique(project))
+            targets = {target["name"]: target for target in project["targets"]}
+            if name == "shared across files":
+                stage_vars = [item[0] for item in targets["Stage"]["variables"].values()]
+                if stage_vars.count("score") != 1 or targets["cat"]["variables"]:
+                    failures.append(f"{name}: variables are {stage_vars} and {targets['cat']['variables']}")
+            if name == "start_with":
+                cat = targets["cat"]
+                got = (cat["x"], cat["y"], cat["visible"], cat["size"])
+                if got != (-10, 20, False, 50):
+                    failures.append(f"{name}: cat starts as {got}")
+
+        # warp=False keeps screen refresh; a plain def runs without it, as before.
+        folder = TMP / "warp"
+        folder.mkdir()
+        (folder / "cat.py").write_text(
+            "import kitty\n\n@kitty.block(warp=False)\ndef walk():\n    kitty.move(1)\n\n"
+            "def dash():\n    kitty.move(1)\n\n@kitty.green_flag\ndef go():\n    walk()\n    dash()\n"
+            "    kitty.say(3.14159265358979)\n",
+            encoding="utf-8",
+        )
+        project = _project_json(comp(folder / "cat.py", folder / "out.sb3"))
+        blocks = project["targets"][1]["blocks"].values()
+        for prefix, want in (("walk", "false"), ("dash", "true")):
+            warps = {str(block["mutation"]["warp"]).lower() for block in blocks
+                     if isinstance(block, dict) and block.get("opcode") in ("procedures_prototype", "procedures_call")
+                     and block["mutation"]["proccode"].startswith(prefix)}
+            if warps != {want}:
+                failures.append(f"warp: {prefix} blocks have warp {warps}, expected {want}")
+        said = [block["inputs"]["MESSAGE"][1][1] for block in blocks
+                if isinstance(block, dict) and block.get("opcode") == "looks_say"]
+        if said != ["3.14159265358979"]:
+            failures.append(f"number text: say got {said}")
+    finally:
+        shutil.rmtree(TMP, ignore_errors=True)
+    return failures
+
+
 def compile_rejects():
     failures = []
     if TMP.exists():
@@ -492,6 +691,8 @@ def main():
     problems.extend(compile_ignored())
     problems.extend(compile_loop_tests())
     problems.extend(compile_images())
+    problems.extend(compile_language())
+    problems.extend(compile_decomp())
     problems.extend(compile_rejects())
     if problems:
         print("FAILED")

@@ -13,6 +13,8 @@ env/
 
 # Generated compiler output
 *.sb3
+# A Scratch-saved test input for the decompiler, not compiler output
+!tests/native.sb3
 build/
 dist/
 *.egg-info/

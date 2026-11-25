@@ -106,9 +106,12 @@ Declare a list.
 
 **show:** `True` shows the monitor.
 
+**scratch:** `True` keeps the items in this one Scratch list, changed by Scratch's own list blocks. The default is `False`. `kitty decomp` writes Scratch lists this way. A shared list with `scratch=True` can be declared in every sprite file that uses it, with the same items, and they all use the one list.
+
 ```python
 items = kitty.list("items", ["worm"])
 bag = kitty.list("bag", shared=True, show=True)
+log = kitty.list("log", [], scratch=True, shared=True)
 ```
 
 `items = ["worm"]` declares the same kind of list when the Scratch name can match the Python name. Indexes start at 0. Use `append`, `extend`, `insert`, `remove`, `pop`, `index`, and `clear` on the list.

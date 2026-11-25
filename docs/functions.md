@@ -120,9 +120,7 @@ Each run of `items = []` or `scores = {}` builds a new list or dictionary for th
 
 ### Screen refresh
 
-Scratch normally runs one block, draws the screen, then lets the next script take a turn. A custom block keeps going until it finishes or reaches `kitty.wait`, and the screen draws after that. Scratch calls this "run without screen refresh."
-
-That is what keeps each call's variables separate. It also changes how motion looks:
+Scratch normally runs one pass of a loop, draws the screen, then lets the next script take a turn. A custom block keeps going until it finishes or reaches `kitty.wait`, and the screen draws after that. Scratch calls this "run without screen refresh." It changes how motion looks:
 
 ```python
 def dash():
@@ -137,7 +135,16 @@ def walk():
 
 `dash()` finishes all 10 moves before the screen draws, so the sprite appears at the end. `walk()` pauses on every step, so you see the walk. A hat script, such as `@kitty.green_flag`, still takes turns with other scripts. A `move` loop there animates even without `wait`.
 
-`warp=True` and `warp=False` do not change this. Custom blocks always run without screen refresh. `kitty.wait` still waits.
+`warp=False` makes a custom block draw the screen after each pass of a loop, like a hat script. That is a Scratch custom block with "Run without screen refresh" turned off:
+
+```python
+@kitty.block(warp=False)
+def stroll():
+    for _ in range(10):
+        kitty.move(10)
+```
+
+`stroll()` shows every step, one step each time the screen draws. `@kitty.number(warp=False)` and `@kitty.boolean(warp=False)` work the same way. Each call keeps its own variables either way.
 
 ### Defaults
 

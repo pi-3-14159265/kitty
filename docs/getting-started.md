@@ -20,7 +20,7 @@ The installed package provides standalone commands:
 ```bash
 kitty build cat.py
 kitty build cat.py mouse.py -o game.sb3
-kitty decompile game.sb3
+kitty decomp game.sb3
 kitty version
 kitty compile cat.py
 kitty comp cat.py
@@ -129,19 +129,21 @@ If there are no eligible Python files, the compiler stops with an error.
 If no stage is provided, Kitty creates a white `backdrop1` stage.
 An existing output file is replaced.
 
-## Turn a Scratch project back into text
+## Turn a Scratch project into Python
 
 ```bash
-kitty decompile game.sb3
-kitty decompile game.sb3 output_folder
+kitty decomp game.sb3
+kitty decomp game.sb3 output_folder
 ```
 
-The decompiler expects a Scratch `.sb3` ZIP file containing `project.json`.
-It creates folders for the stage and sprites. Each folder contains
-`script.txt`, costumes, and sounds. The top folder contains `project.txt`.
+The decompiler reads a Scratch `.sb3` file and writes a Kitty project folder:
+`Assets/` for costumes and backdrops, `Sounds/`, `stage.py`, one `.py` file
+per sprite, and `blocksAsText.txt`, which lists every script as Scratch
+blocks. `kitty build game/` builds it again.
 
 With no output folder, `game.sb3` becomes `game/`. If `game/` is already a
-file, Kitty instead uses `game_decompiled/`.
+file, Kitty instead uses `game_decompiled/`. The folder must be new or empty.
+See [Turn a Scratch project into Python](decompile.md).
 
 ## Common first mistakes
 

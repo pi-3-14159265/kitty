@@ -104,7 +104,7 @@ kitty build cat.py mouse.py -o game.sb3
 kitty build folder/
 kitty compile game.py
 kitty comp game.py
-kitty decompile game.sb3
+kitty decomp game.sb3
 ```
 
 If `kitty` is unavailable or Windows blocks the convenience command, use:
@@ -145,6 +145,10 @@ kitty build cat.py mouse.py -o game.sb3
 kitty build folder/
 ```
 
+`kitty decomp game.sb3` does the reverse: it writes `game/` with `Assets/`,
+`Sounds/`, `stage.py`, one Python file per sprite, and `blocksAsText.txt`.
+`kitty build game/` builds it again.
+
 One source file produces an adjacent `.sb3` file. Multiple source files
 produce `project.sb3` by default. Use `-o` to select an output name. A
 directory compiles eligible `.py` files directly inside that directory.
@@ -157,6 +161,7 @@ directory compiles eligible `.py` files directly inside that directory.
 - [Values, lists, and dictionaries](https://github.com/pi-3-14159265/kitty/wiki/values-and-math)
 - [Sprites and targets](https://github.com/pi-3-14159265/kitty/wiki/sprites)
 - [API reference](https://github.com/pi-3-14159265/kitty/wiki/reference)
+- [Turn a Scratch project into Python](https://github.com/pi-3-14159265/kitty/wiki/decompile)
 - [Limitations](https://github.com/pi-3-14159265/kitty/wiki/limitations)
 
 Project and maintainer links:
