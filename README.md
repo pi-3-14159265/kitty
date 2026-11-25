@@ -66,6 +66,7 @@ kitty.say(double(4))
 | `kitty.say("Hello")` | Say text |
 | `kitty.touching("edge")` | Edge sensing |
 | `kitty.broadcast("message")` | Broadcast a message |
+| `kitty.costume("cat.png")` | Add an SVG, PNG, or JPG costume |
 | `kitty.switch_costume("name")` | Switch costume |
 | `kitty.create_clone()` | Create a clone |
 

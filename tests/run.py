@@ -11,9 +11,11 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import zipfile
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -313,6 +315,132 @@ def compile_loop_tests():
     return failures
 
 
+def _png(width, height):
+    """A plain white PNG of this size."""
+    def chunk(kind, body):
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+    rows = (b"\x00" + b"\xff\xff\xff" * width) * height
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+def _jpg_header(width, height, orientation=1):
+    """The start of a JPEG, with an EXIF orientation: enough for the compiler to read its size."""
+    tiff = b"II*\x00" + struct.pack("<IH", 8, 1) + struct.pack("<HHIHH", 0x0112, 3, 1, orientation, 0) + struct.pack("<I", 0)
+    exif = b"Exif\x00\x00" + tiff
+    frame = struct.pack(">BHHB", 8, height, width, 1) + b"\x01\x11\x00"
+    return (
+        b"\xff\xd8\xff\xe1" + struct.pack(">H", len(exif) + 2) + exif
+        + b"\xff\xc0" + struct.pack(">H", len(frame) + 2) + frame + b"\xff\xd9"
+    )
+
+
+IMAGE_FILES = {
+    "wide.png": lambda: _png(100, 60),
+    "odd.png": lambda: _png(5, 3),
+    "huge.png": lambda: _png(500, 10),
+    "photo.jpg": lambda: _jpg_header(120, 80),
+    "turned.jpg": lambda: _jpg_header(120, 80, orientation=6),
+    "really-png.jpg": lambda: _png(10, 10),
+    "box.svg": lambda: b'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="-10 0 64 32"/>',
+    "sized.svg": lambda: b'<svg xmlns="http://www.w3.org/2000/svg" width="40px" height="20"/>',
+    "bare.svg": lambda: b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+    "cat.gif": lambda: b"GIF89a" + bytes(20),
+    "ping.wav": lambda: b"RIFF\x04\x00\x00\x00WAVE",
+}
+
+# (script name, declaration, expected costume fields; None means the field is left out)
+IMAGE_COSTUMES = [
+    ("case", 'kitty.costume("wide.png")', {"dataFormat": "png", "bitmapResolution": 1, "rotationCenterX": 50, "rotationCenterY": 30}),
+    ("case", 'kitty.costume("wide.png", resolution=2)', {"bitmapResolution": 2, "rotationCenterX": 50, "rotationCenterY": 30}),
+    ("case", 'kitty.costume("odd.png")', {"rotationCenterX": 2.5, "rotationCenterY": 1.5}),
+    ("case", 'kitty.costume("photo.jpg")', {"dataFormat": "jpg", "rotationCenterX": 60, "rotationCenterY": 40}),
+    ("case", 'kitty.costume("turned.jpg")', {"rotationCenterX": 40, "rotationCenterY": 60}),
+    ("case", 'kitty.costume("really-png.jpg")', {"dataFormat": "png", "rotationCenterX": 5}),
+    ("case", 'kitty.costume("box.svg")', {"dataFormat": "svg", "bitmapResolution": 1, "rotationCenterX": 22, "rotationCenterY": 16}),
+    ("case", 'kitty.costume("sized.svg")', {"rotationCenterX": 20, "rotationCenterY": 10}),
+    ("case", 'kitty.costume("bare.svg")', {"rotationCenterX": None, "rotationCenterY": None}),
+    ("stage", 'kitty.backdrop("wide.png", name="field")', {"name": "field", "rotationCenterX": 50, "rotationCenterY": 30}),
+]
+
+# (declaration, text that must be in the error)
+IMAGE_REJECTS = [
+    ('kitty.costume("cat.gif")', "svg, png, or jpg"),
+    ('kitty.costume("wide.png", resolution=3)', "resolution is 1 or 2"),
+    ('kitty.costume("box.svg", resolution=2)', "resolution is for png and jpg"),
+    ('kitty.sound("ping.wav", resolution=2)', "resolution belongs on a costume"),
+]
+
+# (declaration, text that must be in a warning, or None for no warning)
+IMAGE_WARNINGS = [
+    ('kitty.costume("huge.png")', "500 x 10, bigger than the 480 x 360 stage"),
+    ('kitty.costume("huge.png", resolution=2)', None),
+    ('kitty.costume("bare.svg")', "no viewBox"),
+    ('kitty.costume("box.svg")', None),
+]
+
+
+def _image_case(folder, script_name, line):
+    folder.mkdir()
+    for name, make in IMAGE_FILES.items():
+        (folder / name).write_bytes(make())
+    script = folder / f"{script_name}.py"
+    script.write_text(f"import kitty\n{line}\n", encoding="utf-8")
+    output = folder / "case.sb3"
+    warnings = []
+    comp(script, output, warnings)
+    with zipfile.ZipFile(output) as archive:
+        project = json.loads(archive.read("project.json"))
+    target = next(item for item in project["targets"] if item["isStage"] == (script_name == "stage"))
+    return target["costumes"][0], warnings
+
+
+def compile_images():
+    failures = []
+    if TMP.exists():
+        shutil.rmtree(TMP)
+    TMP.mkdir()
+    count = 0
+
+    def folder():
+        nonlocal count
+        count += 1
+        return TMP / f"image{count}"
+
+    try:
+        for script_name, line, expected in IMAGE_COSTUMES:
+            try:
+                costume, _warnings = _image_case(folder(), script_name, line)
+            except CompileError as exc:
+                failures.append(f"{line}: {exc}")
+                continue
+            for key, want in expected.items():
+                if costume.get(key) != want:
+                    failures.append(f"{line}: {key} is {costume.get(key)!r}, expected {want!r}")
+        for line, needle in IMAGE_REJECTS:
+            try:
+                _image_case(folder(), "case", line)
+            except CompileError as exc:
+                if needle not in str(exc):
+                    failures.append(f"{line}: expected {needle!r} in {exc}")
+            else:
+                failures.append(f"{line}: compiled, but it must be rejected")
+        for line, needle in IMAGE_WARNINGS:
+            try:
+                _costume, warnings = _image_case(folder(), "case", line)
+            except CompileError as exc:
+                failures.append(f"{line}: {exc}")
+                continue
+            if needle is None and warnings:
+                failures.append(f"{line}: unexpected warning {warnings}")
+            elif needle is not None and not any(needle in warning for warning in warnings):
+                failures.append(f"{line}: expected a warning with {needle!r}, got {warnings}")
+    finally:
+        shutil.rmtree(TMP, ignore_errors=True)
+    return failures
+
+
 def compile_rejects():
     failures = []
     if TMP.exists():
@@ -363,6 +491,7 @@ def main():
     problems.extend(compile_cli_aliases())
     problems.extend(compile_ignored())
     problems.extend(compile_loop_tests())
+    problems.extend(compile_images())
     problems.extend(compile_rejects())
     if problems:
         print("FAILED")

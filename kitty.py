@@ -345,17 +345,19 @@ _export("dict", "Declare a dictionary stored as a keys list and a values list.",
     Parameter("shared", Parameter.KEYWORD_ONLY, default=False),
     Parameter("show", Parameter.KEYWORD_ONLY, default=False),
 ]))
-_export("costume", "Add a costume file to this sprite.", Signature([
+_export("costume", "Add a costume file (svg, png, or jpg) to this sprite.", Signature([
     Parameter("path", Parameter.POSITIONAL_OR_KEYWORD),
     Parameter("name", Parameter.KEYWORD_ONLY, default=None),
+    Parameter("resolution", Parameter.KEYWORD_ONLY, default=1),
 ]))
 _export("sound", "Add a sound file to this sprite.", Signature([
     Parameter("path", Parameter.POSITIONAL_OR_KEYWORD),
     Parameter("name", Parameter.KEYWORD_ONLY, default=None),
 ]))
-_export("backdrop", "Add a backdrop file to the stage.", Signature([
+_export("backdrop", "Add a backdrop file (svg, png, or jpg) to the stage.", Signature([
     Parameter("path", Parameter.POSITIONAL_OR_KEYWORD),
     Parameter("name", Parameter.KEYWORD_ONLY, default=None),
+    Parameter("resolution", Parameter.KEYWORD_ONLY, default=1),
 ]))
 _export("sprite_name", "Set this sprite's name.", Signature([
     Parameter("name", Parameter.POSITIONAL_OR_KEYWORD),

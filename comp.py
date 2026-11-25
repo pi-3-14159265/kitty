@@ -22,6 +22,7 @@ import math as _math
 import sys
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree
 
 from kitty import BLOCKS, DECLARATIONS, MATH, MENUS, REQUIRED
 
@@ -119,6 +120,8 @@ _RAD_TO_DEG = 180 / _math.pi
 _DEG_TO_RAD = _math.pi / 180
 _STAR_LIMIT = 8
 _KW_LIMIT = 4
+_STAGE_WIDTH = 480
+_STAGE_HEIGHT = 360
 
 _COSTUME_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <circle cx="32" cy="32" r="28" fill="#4C97FF" stroke="#3373CC" stroke-width="2"/>
@@ -293,6 +296,7 @@ class Project:
         self.remote_uses = set()
         self.targets_by_name = {}
         self.applied_decls = {}
+        self.warnings = []
 
     def asset(self, data):
         digest = hashlib.md5(data).hexdigest()
@@ -356,6 +360,7 @@ def comp(scripts, output=None, warnings=None):
         raise CompileError("no Python scripts to compile")
     destination = Path(output) if output else _default_output(paths)
     project = Project()
+    project.warnings = warnings
     classes, units = _load_program(paths, warnings)
     instances = _program_instances(classes, units)
     stage = None
@@ -1611,7 +1616,10 @@ class Target:
             label = kwargs.get("name")
             if not isinstance(file_name, str):
                 self._error(call, f"{kind} needs a file path")
-            self._load_media(kind, file_name, label, call)
+            resolution = kwargs.get("resolution")
+            if kind == "sound" and resolution is not None:
+                self._error(call, "resolution belongs on a costume or a backdrop")
+            self._load_media(kind, file_name, label, call, resolution)
         else:
             self._error(call, f"unknown declaration {kind}")
 
@@ -2154,7 +2162,7 @@ class Target:
             monitor["isDiscrete"] = True
         return monitor
 
-    def _load_media(self, kind, file_name, label, node):
+    def _load_media(self, kind, file_name, label, node, resolution=None):
         if kind == "backdrop" and not self.is_stage:
             self._error(node, "backdrops belong on the stage (stage.py or @kitty.stage)")
         source = Path(file_name)
@@ -2162,13 +2170,11 @@ class Target:
             source = self.path.parent / source
         if not source.is_file():
             self._error(node, f"file not found: {source}")
-        ext = source.suffix.lower().lstrip(".")
-        if ext == "jpeg":
-            ext = "jpg"
         data = source.read_bytes()
-        asset_id, md5ext = self.project.add_asset(data, ext)
         media_name = label or source.stem
         if kind == "sound":
+            ext = source.suffix.lower().lstrip(".")
+            asset_id, md5ext = self.project.add_asset(data, ext)
             rate, count = _wav_info(data) if ext == "wav" else (48000, 1)
             self.sounds.append({
                 "name": media_name,
@@ -2180,15 +2186,46 @@ class Target:
                 "md5ext": md5ext,
             })
             return
+        try:
+            bitmap = _bitmap_info(data)
+        except ValueError as exc:
+            self._error(node, f"{source.name}: {exc}")
+        if bitmap is None:
+            if source.suffix.lower() != ".svg":
+                self._error(node, f"{source.name}: a {kind} is an svg, png, or jpg file")
+            if resolution not in (None, 1) or isinstance(resolution, bool):
+                self._error(node, "resolution is for png and jpg images. Scratch draws an svg at any size")
+            ext, scale, center = "svg", 1, _svg_center(data)
+            if center is None:
+                self.project.warnings.append(
+                    f"{self.path}:{node.lineno}: {source.name} has no viewBox, or width and height, "
+                    "so Scratch picks its center. Add one, as in viewBox=\"0 0 64 64\""
+                )
+        else:
+            ext, width, height = bitmap
+            scale = 1 if resolution is None else resolution
+            if isinstance(scale, bool) or scale not in (1, 2):
+                self._error(node, "resolution is 1 or 2")
+            center = (width / 2, height / 2)
+            shown_width, shown_height = width / scale, height / scale
+            if shown_width > _STAGE_WIDTH or shown_height > _STAGE_HEIGHT:
+                self.project.warnings.append(
+                    f"{self.path}:{node.lineno}: {source.name} shows as {_format_number(shown_width)} x "
+                    f"{_format_number(shown_height)}, bigger than the {_STAGE_WIDTH} x {_STAGE_HEIGHT} stage. "
+                    "Use a smaller image, resolution=2, or kitty.set_size"
+                )
+        asset_id, md5ext = self.project.add_asset(data, ext)
         costume = {
             "name": media_name,
-            "bitmapResolution": 1 if ext == "svg" else 2,
+            "bitmapResolution": scale,
             "dataFormat": ext,
             "assetId": asset_id,
             "md5ext": md5ext,
-            "rotationCenterX": 0,
-            "rotationCenterY": 0,
         }
+        if center is not None:
+            # The image point that sits on the sprite's x and y: the middle of the image.
+            costume["rotationCenterX"] = _whole_if_possible(center[0])
+            costume["rotationCenterY"] = _whole_if_possible(center[1])
         self.costumes.append(costume)
 
     def _add_default_costume(self):
@@ -7261,6 +7298,113 @@ def _normalize_color(value, node):
     if len(text) not in {4, 7}:
         raise CompileError(f"line {getattr(node, 'lineno', '?')}: color must look like #ff8800")
     return text.lower()
+
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# JPEG start-of-frame markers. The frame header holds the image size.
+_JPG_FRAMES = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+def _bitmap_info(data):
+    """Return (format, width, height) for png or jpg bytes, or None for anything else.
+
+    The format comes from the bytes, so a png named cat.jpg still works.
+    """
+    if data.startswith(_PNG_SIGNATURE):
+        if len(data) < 24 or data[12:16] != b"IHDR":
+            raise ValueError("this png file is damaged")
+        return "png", int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    if data.startswith(b"\xff\xd8\xff"):
+        return ("jpg", *_jpg_size(data))
+    return None
+
+
+def _jpg_size(data):
+    """Width and height as shown, after the turn a phone photo asks for in its EXIF data."""
+    pos = 2
+    turned = False
+    while pos + 4 <= len(data):
+        if data[pos] != 0xFF:
+            raise ValueError("this jpg file is damaged")
+        marker = data[pos + 1]
+        if marker == 0xFF:
+            pos += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            pos += 2
+            continue
+        if marker in (0xD9, 0xDA):
+            break
+        length = int.from_bytes(data[pos + 2:pos + 4], "big")
+        body = data[pos + 4:pos + 2 + length]
+        if marker == 0xE1 and body.startswith(b"Exif\0\0"):
+            turned = _exif_orientation(body[6:]) in (5, 6, 7, 8)
+        elif marker in _JPG_FRAMES and len(body) >= 5:
+            height = int.from_bytes(body[1:3], "big")
+            width = int.from_bytes(body[3:5], "big")
+            return (height, width) if turned else (width, height)
+        pos += 2 + length
+    raise ValueError("this jpg file has no image size")
+
+
+def _exif_orientation(tiff):
+    """The EXIF orientation tag (1 to 8). 5 to 8 mean the photo is turned a quarter turn."""
+    order = {b"II": "little", b"MM": "big"}.get(tiff[:2])
+    if order is None or len(tiff) < 8:
+        return 1
+    ifd = int.from_bytes(tiff[4:8], order)
+    if ifd + 2 > len(tiff):
+        return 1
+    for index in range(int.from_bytes(tiff[ifd:ifd + 2], order)):
+        entry = ifd + 2 + index * 12
+        if entry + 12 > len(tiff):
+            break
+        if int.from_bytes(tiff[entry:entry + 2], order) == 0x0112:
+            return int.from_bytes(tiff[entry + 8:entry + 10], order)
+    return 1
+
+
+def _svg_center(data):
+    """The middle of an svg's canvas, in the svg's own units, or None when the file gives no size.
+
+    With None, Scratch centers the drawing itself.
+    """
+    try:
+        root = ElementTree.fromstring(data)
+    except ElementTree.ParseError:
+        return None
+    box = root.get("viewBox")
+    if box is not None:
+        parts = box.replace(",", " ").split()
+        try:
+            x, y, width, height = (float(part) for part in parts)
+        except ValueError:
+            return None
+        if width <= 0 or height <= 0:
+            return None
+        return x + width / 2, y + height / 2
+    width = _svg_length(root.get("width"))
+    height = _svg_length(root.get("height"))
+    if width is None or height is None:
+        return None
+    return width / 2, height / 2
+
+
+def _svg_length(text):
+    if text is None:
+        return None
+    text = text.strip()
+    if text.endswith("px"):
+        text = text[:-2]
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _whole_if_possible(value):
+    return int(value) if float(value).is_integer() else value
 
 
 def _wav_info(data):

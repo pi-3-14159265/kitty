@@ -38,6 +38,7 @@ then compiles a Scratch 3 `.sb3` project.
 - [Messages](messages.md)
 - [Pen](pen.md)
 - [Costumes, sounds, and names](costumes-sounds-and-names.md)
+- [Bitmap images (PNG and JPG)](costumes-sounds-and-names.md#bitmap-images-png-and-jpg)
 
 The README at the repository root is a quick project overview. These pages are the maintained documentation source and can be published to the GitHub Wiki.
 

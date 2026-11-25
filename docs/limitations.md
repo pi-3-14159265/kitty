@@ -69,6 +69,16 @@ kitty.sound("meow.wav")
 Costume declarations do not belong inside a loop. A backdrop belongs on the
 stage, in `stage.py`, or on a `kitty.Stage` class.
 
+- Costume and backdrop files are `svg`, `png`, or `jpg`. Save a GIF, BMP, or
+  WEBP image as PNG first.
+- A PNG or JPG shows one pixel per step. Use `resolution=2` for an image drawn
+  at double size, such as a bitmap taken out of a Scratch project.
+- The compiler warns when a bitmap shows bigger than the 480 x 360 stage.
+- An SVG needs a `viewBox`, or a `width` and `height`, for Kitty to find its
+  middle. Without one, the compiler warns and Scratch picks the center.
+
+See [Bitmap images (PNG and JPG)](costumes-sounds-and-names.md#bitmap-images-png-and-jpg).
+
 ## Class and sprite limits
 
 - Constructor arguments can be numbers, text, or lists.

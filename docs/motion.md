@@ -36,6 +36,10 @@ offset in Python. If the subject is a 64 x 64 circle whose center is
 `(32, 32)`, placing the sprite at `(0, 0)` puts the circle at the center of
 the screen.
 
+PNG and JPG images work the same way: the middle pixel of the image sits on
+the sprite's x and y, and one pixel is one step. See
+[Bitmap images (PNG and JPG)](costumes-sounds-and-names.md#bitmap-images-png-and-jpg).
+
 For a 480 x 360 backdrop, keep the scene centered around `(240, 180)`:
 
 ```svg

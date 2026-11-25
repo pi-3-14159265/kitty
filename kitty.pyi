@@ -1196,12 +1196,18 @@ def dict(name: str, value: Any = None, *, shared: bool = False, show: bool = Fal
     """
     ...
 
-def costume(path: str, *, name: str | None = None) -> None:
+def costume(path: str, *, name: str | None = None, resolution: Literal[1, 2] = 1) -> None:
     """Add a costume file to this sprite. svg, png, and jpg work.
+
+    The middle of the image sits on the sprite's x and y. A png or jpg
+    shows one image pixel per Scratch step.
 
     Args:
         path: The file path, relative to the script.
         name: The Scratch name. Omit it to use the file name.
+        resolution: png and jpg only. 2 shows the image at half its pixel
+            size, for art drawn at double size, such as images taken
+            out of a Scratch project.
     """
     ...
 
@@ -1214,12 +1220,17 @@ def sound(path: str, *, name: str | None = None) -> None:
     """
     ...
 
-def backdrop(path: str, *, name: str | None = None) -> None:
-    """Add a backdrop file to the stage.
+def backdrop(path: str, *, name: str | None = None, resolution: Literal[1, 2] = 1) -> None:
+    """Add a backdrop file to the stage. svg, png, and jpg work.
+
+    The middle of the image sits on the middle of the stage. A 480 x 360
+    png or jpg fills the stage.
 
     Args:
         path: The file path, relative to the script.
         name: The Scratch name. Omit it to use the file name.
+        resolution: png and jpg only. 2 shows the image at half its pixel
+            size, so a 960 x 720 backdrop fills the stage.
     """
     ...
 
