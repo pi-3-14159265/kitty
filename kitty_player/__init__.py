@@ -45,6 +45,9 @@ class Project:
         self.error = None
         self.summary = []
         self.stamp = None
+        # A page opened with ?test=<token> runs the green flag by itself and reports here.
+        self.result = None
+        self.finished = threading.Event()
 
     def load(self):
         """Read the .sb3. Returns True when it is a Scratch project."""
@@ -162,22 +165,28 @@ def _handler(project):
                 self._error(404)
 
         def do_POST(self):
-            # The page sends what happens in the project here, for --verbose.
+            # /log: what happens in the project, for --verbose.
+            # /result: what a test run ended with, from a page opened with ?test=<token>.
             path, _, query = self.path.partition("?")
-            if path != "/log" or not project.verbose or query != f"token={project.token}":
+            allowed = path == "/result" or (path == "/log" and project.verbose)
+            if not allowed or query != f"token={project.token}":
                 self._error(403)
                 return
             size = int(self.headers.get("Content-Length") or 0)
-            if size > _LOG_LIMIT:
+            if size > _LOG_LIMIT * 16:
                 self._error(413)
                 return
             try:
-                lines = json.loads(self.rfile.read(size).decode("utf-8"))
+                body = json.loads(self.rfile.read(size).decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
                 self._error(400)
                 return
-            for line in lines if isinstance(lines, list) else []:
-                _say(f"[player] {str(line)[:500]}")
+            if path == "/result":
+                project.result = body
+                project.finished.set()
+            else:
+                for line in body if isinstance(body, list) else []:
+                    _say(f"[player] {str(line)[:500]}")
             self.send_response(204)
             self.send_header("Content-Length", "0")
             self.end_headers()

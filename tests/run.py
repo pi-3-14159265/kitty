@@ -1,9 +1,15 @@
-"""Compile the Scratch suite and the cases that must be rejected.
+"""Test Kitty: compile the suite, check what must compile and what must not,
+then run the suite on Scratch.
 
     python tests/run.py
+    python tests/run.py --no-scratch
 
-Open tests/suite.sb3 in Scratch, click the green flag on the suite sprite,
-and wait until it says failed 0. A failure says FAIL and a short name.
+The last step builds tests/project into tests/suite.sb3, decompiles that with
+kitty decomp, builds the decompiled Python again, and runs both projects in
+Scratch's engine (kitty run's player) in a browser. Each must finish with
+failed 0. A headless Microsoft Edge, Google Chrome, or Chromium runs it with
+no window; without one, your default browser opens the page. --no-scratch
+skips this step.
 """
 
 from __future__ import annotations
@@ -14,6 +20,8 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
+import webbrowser
 import zipfile
 import zlib
 from pathlib import Path
@@ -748,6 +756,109 @@ def compile_rejects():
     return failures
 
 
+def _find_browser():
+    """A Chromium browser that can run headless: Microsoft Edge, Google Chrome, or Chromium."""
+    candidates = []
+    if os.name == "nt":
+        for base in (os.environ.get("PROGRAMFILES(X86)"), os.environ.get("PROGRAMFILES"), os.environ.get("LOCALAPPDATA")):
+            if base:
+                candidates.append(Path(base) / "Microsoft" / "Edge" / "Application" / "msedge.exe")
+                candidates.append(Path(base) / "Google" / "Chrome" / "Application" / "chrome.exe")
+    elif sys.platform == "darwin":
+        for app in ("Google Chrome", "Microsoft Edge", "Chromium"):
+            candidates.append(Path(f"/Applications/{app}.app/Contents/MacOS/{app}"))
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "msedge"):
+        found = shutil.which(name)
+        if found:
+            candidates.append(Path(found))
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def run_on_scratch(sb3, timeout=180):
+    """Play sb3 in Scratch's engine in a browser, run the green flag, and return (result, how).
+
+    result is what the page reports: seconds, timedOut, errors, and every sprite's
+    variables and lists. It is None when no browser reported back.
+    """
+    import kitty_player
+
+    project = kitty_player.Project(sb3)
+    if not project.load():
+        return None, project.error
+    server = kitty_player.serve(project)
+    url = f"http://127.0.0.1:{server.server_port}/?test={project.token}"
+    browser = _find_browser()
+    profile = tempfile.mkdtemp(prefix="kitty-scratch-test-")
+    process = None
+    try:
+        if browser is not None:
+            how = f"headless {browser.stem}"
+            # A fresh profile keeps this browser apart from any you have open. The fake
+            # microphone lets the loudness block work without asking.
+            process = subprocess.Popen(
+                [
+                    str(browser), "--headless=new", f"--user-data-dir={profile}", "--no-first-run",
+                    "--no-default-browser-check", "--autoplay-policy=no-user-gesture-required",
+                    "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", url,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            how = "your browser"
+            if not webbrowser.open(url):
+                return None, "no browser could be opened"
+        if not project.finished.wait(timeout):
+            return None, f"{how} sent no result within {timeout} seconds"
+        return project.result, how
+    finally:
+        if process is not None:
+            process.terminate()
+            try:
+                process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        server.shutdown()
+        server.server_close()
+        shutil.rmtree(profile, ignore_errors=True)
+
+
+def run_suites_on_scratch():
+    """Build, decompile, build again, and run both suites on Scratch. Each must end with failed 0."""
+    import decomp
+
+    if "--no-scratch" in sys.argv:
+        print("running on Scratch: skipped (--no-scratch)")
+        return []
+    failures = []
+    if TMP.exists():
+        shutil.rmtree(TMP)
+    TMP.mkdir()
+    try:
+        folder = TMP / "roundtrip"
+        decomp.decomp(SUITE, folder)
+        rebuilt = comp(folder, TMP / "roundtrip.sb3")
+        for label, sb3 in (("built suite", SUITE), ("build, decomp, recomp", rebuilt)):
+            result, how = run_on_scratch(sb3)
+            if result is None:
+                failures.append(f"on Scratch, {label}: {how}")
+                continue
+            suite = result.get("targets", {}).get("suite", {})
+            passed = suite.get("vars", {}).get("passed")
+            failed = suite.get("vars", {}).get("failed")
+            names = suite.get("lists", {}).get("failed tests", [])
+            print(f"on Scratch ({how}), {label}: passed {passed}, failed {failed}, {result.get('seconds', 0):.1f} s")
+            if result.get("timedOut"):
+                failures.append(f"on Scratch, {label}: still running after the time limit")
+            if failed != "0" or passed in (None, "0"):
+                failures.append(f"on Scratch, {label}: passed {passed}, failed {failed}: {', '.join(names)}")
+            for error in result.get("errors") or []:
+                failures.append(f"on Scratch, {label}: page error: {error}")
+    finally:
+        shutil.rmtree(TMP, ignore_errors=True)
+    return failures
+
+
 def main():
     print("compiling", PROJECT, "->", SUITE)
     comp(PROJECT, SUITE)
@@ -784,9 +895,14 @@ def main():
             print(item)
         return 1
     print("compile gate passed")
-    print("Open tests/suite.sb3 in Scratch and click the green flag.")
-    print("Wait for failed 0. Names that failed stay in the list 'failed tests'.")
-    print("Each row starts with the group in tests/project/suite.py, then the check name.")
+    problems.extend(run_suites_on_scratch())
+    if problems:
+        print("FAILED")
+        for item in problems:
+            print(item)
+        print("A row in 'failed tests' starts with the group in tests/project/suite.py, then the check name.")
+        return 1
+    print("all tests passed")
     return 0
 
 

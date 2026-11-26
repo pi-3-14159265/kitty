@@ -15,6 +15,13 @@ python tests/run.py
 python -m twine check dist/*
 ```
 
+`tests/run.py` compiles the suite and checks what must and must not compile.
+Then it builds `tests/project`, decompiles the `.sb3` with `kitty decomp`,
+builds the decompiled Python again, and runs both projects in Scratch's engine
+with a headless Microsoft Edge, Google Chrome, or Chromium. Both must finish
+with `failed 0`. Without one of those browsers, your default browser opens the
+test page instead. `python tests/run.py --no-scratch` skips the Scratch runs.
+
 Before building, remove old artifacts:
 
 ```powershell

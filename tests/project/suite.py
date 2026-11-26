@@ -197,7 +197,8 @@ def run_loops():
     expect("break skips test", polls == 2)
     polls = 0
     start = kitty.timer()
-    kitty.wait_until(ready() or kitty.timer() > start + 1)
+    # The time limit stops a regression from hanging; a slow build may need several seconds.
+    kitty.wait_until(ready() or kitty.timer() > start + 10)
     expect("wait call", polls == 3)
 
 
@@ -678,7 +679,9 @@ def run_sensing():
     if kitty.touching("edge") or kitty.mouse_down() or kitty.key_pressed("space"):
         mark = 1
     expect("sensors", mark == 1)
-    expect("loud", kitty.loudness() >= 0)
+    # Loudness is -1 until a microphone is connected and allowed, then 0 to 100.
+    loud = kitty.loudness()
+    expect("loud", loud >= -1 and loud <= 100)
     expect("year", kitty.current("year") > 2020)
     expect("days", kitty.days_since_2000() > 9000)
     kitty.reset_timer()

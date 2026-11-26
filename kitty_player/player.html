@@ -268,6 +268,12 @@
       report(`${target.getName()} ${type === "think" ? "thinks" : "says"}: ${text}`);
     }
   });
+  // Errors are kept for a test run's result too.
+  const pageErrors = [];
+  function noteError(text) {
+    if (pageErrors.length < 50) pageErrors.push(text);
+    report(`error: ${text}`);
+  }
   for (const level of ["warn", "error"]) {
     const original = console[level].bind(console);
     console[level] = (...args) => {
@@ -275,11 +281,12 @@
       const text = args.map(item => (item && item.message) || String(item)).join(" ");
       // Block labels come from the Scratch editor, which the player does not have. Running does not need them.
       if (/^Translation for ".*" in ".*" is missing/.test(text)) return;
-      report(`${level}: ${text}`);
+      if (level === "error") noteError(text);
+      else report(`warn: ${text}`);
     };
   }
-  window.addEventListener("error", event => report(`error: ${event.message}`));
-  window.addEventListener("unhandledrejection", event => report(`error: ${(event.reason && event.reason.message) || event.reason}`));
+  window.addEventListener("error", event => noteError(event.message));
+  window.addEventListener("unhandledrejection", event => noteError(String((event.reason && event.reason.message) || event.reason)));
 
   let started = false;
   let version = null;
@@ -500,9 +507,54 @@
     return status.watch;
   }
 
+  // Test mode (?test=<token>, used by tests/run.py): run the green flag at once, wait until
+  // no script has run for a second, then send every sprite's variables and lists back.
+  const testToken = new URLSearchParams(location.search).get("test");
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  async function runTest() {
+    startButton.hidden = true;
+    started = true;
+    const begin = Date.now();
+    vm.greenFlag();
+    let quietSince = null;
+    let timedOut = true;
+    while (Date.now() - begin < 170000) {
+      await pause(200);
+      if (vm.runtime.threads.length) {
+        quietSince = null;
+      } else if (!quietSince) {
+        quietSince = Date.now();
+      } else if (Date.now() - quietSince >= 1000) {
+        timedOut = false;
+        break;
+      }
+    }
+    const targets = {};
+    for (const target of vm.runtime.targets.filter(item => item.isOriginal)) {
+      const vars = {};
+      const lists = {};
+      for (const variable of Object.values(target.variables)) {
+        if (variable.type === "list") lists[variable.name] = variable.value.map(String);
+        else if (variable.type === "") vars[variable.name] = String(variable.value);
+      }
+      targets[target.getName()] = { vars, lists };
+    }
+    await sendResult({ seconds: (Date.now() - begin) / 1000, timedOut, errors: pageErrors, targets });
+    state.textContent = "Test finished. You can close this tab.";
+  }
+  function sendResult(result) {
+    return fetch(`result?token=${encodeURIComponent(testToken)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(result),
+    });
+  }
+
   (async () => {
     vm.start();
     const watch = await check();
+    if (testToken) {
+      if (version !== null) runTest();
+      else sendResult({ seconds: 0, timedOut: false, targets: {}, errors: [...pageErrors, message.textContent || "the project did not load"] });
+    }
     if (watch) setInterval(check, 1000);
   })();
 })();
