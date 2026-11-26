@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kitty-scratch"
-version = "0.1.2"
+version = "0.2.0"
 description = "Compile Python syntax into Scratch 3 projects"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-license-files = ["LICENSE", "kitty_player/vendor/licenses/*"]
+license-files = ["LICENSE"]
 dependencies = []
 authors = [
   { name = "Thayaden Pi", email = "thayaden_pi@proton.me" },
@@ -27,10 +27,14 @@ kitty-decomp = "decomp:main"
 
 [tool.setuptools]
 py-modules = ["kitty", "comp", "decomp", "cli"]
-packages = ["kitty_player"]
+# The vendor folders hold no Python, but setuptools needs them listed to ship their files.
+packages = ["kitty_player", "kitty_player.vendor", "kitty_player.vendor.chunks", "kitty_player.vendor.licenses"]
 
 [tool.setuptools.package-data]
-kitty_player = ["player.html", "vendor/*.js", "vendor/chunks/*.js", "vendor/SOURCES.txt", "vendor/licenses/*"]
+kitty_player = ["player.html"]
+"kitty_player.vendor" = ["*.js", "SOURCES.txt"]
+"kitty_player.vendor.chunks" = ["*.js"]
+"kitty_player.vendor.licenses" = ["*"]
 
 [tool.setuptools.data-files]
 "." = ["kitty.pyi"]
