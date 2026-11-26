@@ -11,8 +11,9 @@ then compiles a Scratch 3 `.sb3` project.
 4. [Values and math](values-and-math.md)
 5. [Scratch API migration reference](scratch-and-python.md)
 6. [Limitations and troubleshooting](limitations.md)
-7. [Turn a Scratch project into Python](decompile.md)
-8. [Testing and publishing a release](releasing.md)
+7. [Play a project: kitty run](run.md)
+8. [Turn a Scratch project into Python](decompile.md)
+9. [Testing and publishing a release](releasing.md)
 
 ## Build bigger projects
 

@@ -53,6 +53,14 @@ def main(argv=None):
     build.add_argument("scripts", nargs="+", help="Python files or a directory")
     build.add_argument("-o", "--output", help="output .sb3 path")
 
+    run = subparsers.add_parser("run", help="play an .sb3 file in your browser")
+    run.add_argument("source", help="the .sb3 file to play")
+    run.add_argument("-v", "--verbose", action="store_true",
+                     help="print what the project and the player do while it plays")
+    run.add_argument("--watch", action="store_true", help="reload the page's project when the .sb3 file changes")
+    run.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (default: any free port)")
+    run.add_argument("--no-browser", action="store_true", help="print the address without opening a browser")
+
     decompile = subparsers.add_parser(
         "decomp",
         aliases=["decompile"],
@@ -66,6 +74,13 @@ def main(argv=None):
         import kitty
         print(kitty.__version__)
         return 0
+    if args.command == "run":
+        from kitty_player import main as run_main
+        options = ["--port", str(args.port)]
+        options += ["--verbose"] if args.verbose else []
+        options += ["--watch"] if args.watch else []
+        options += ["--no-browser"] if args.no_browser else []
+        return run_main([args.source, *options])
     if args.command in {"build", "compile", "comp"}:
         from comp import main as build_main
         return build_main(["--output", args.output, *args.scripts]) if args.output else build_main(args.scripts)

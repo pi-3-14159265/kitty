@@ -1,0 +1,3 @@
+# The bundled Scratch engine stays byte for byte as published, on every
+# system, so the SHA-256 sums in kitty_player/vendor/SOURCES.txt still match.
+kitty_player/vendor/** -text

@@ -20,6 +20,7 @@ The installed package provides standalone commands:
 ```bash
 kitty build cat.py
 kitty build cat.py mouse.py -o game.sb3
+kitty run cat.sb3
 kitty decomp game.sb3
 kitty version
 kitty compile cat.py
@@ -88,6 +89,16 @@ On success, Kitty prints the output path and creates `cat.sb3` beside
 
 Open `cat.sb3` in Scratch. If you open it on the Scratch website, use
 **File > Load from your computer**. Then click the green flag.
+
+To play it without the Scratch website, run:
+
+```bash
+kitty run cat.sb3
+```
+
+Your browser opens the project. Click the green flag on the page. Add
+`--verbose` to see what the project does in the terminal. See
+[Play a project](run.md).
 
 ## Step 3: add a score
 

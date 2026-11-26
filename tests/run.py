@@ -640,6 +640,89 @@ def compile_language():
     return failures
 
 
+def compile_player():
+    """kitty run serves the player, the project, and the bundled Scratch runtime, and nothing else."""
+    import hashlib
+    import urllib.error
+    import urllib.request
+
+    import kitty_player
+
+    failures = []
+    for line in (kitty_player.VENDOR / "SOURCES.txt").read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[2].startswith("https://"):
+            path = kitty_player.VENDOR / parts[0]
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != parts[1]:
+                failures.append(f"player: vendor/{parts[0]} does not match SOURCES.txt")
+
+    project = kitty_player.Project(SUITE, verbose=True)
+    if not project.load():
+        return failures + [f"player: suite.sb3 did not load: {project.error}"]
+    server = kitty_player.serve(project)
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    def get(path, data=None):
+        request = urllib.request.Request(base + path, data=data, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.status, response.read()
+        except urllib.error.HTTPError as exc:
+            return exc.code, b""
+
+    try:
+        # --verbose: the page reports with the token from /status; anything else is refused.
+        lines = json.dumps(["player check"]).encode("utf-8")
+        status, _body = get(f"/log?token={project.token}", lines)
+        if status != 204:
+            failures.append(f"player: /log with the token returned {status}")
+        for path in ("/log?token=wrong", "/log"):
+            status, _body = get(path, lines)
+            if status != 403:
+                failures.append(f"player: {path} returned {status}, expected 403")
+        status, body = get("/chunks/fetch-worker.cd3a909d7b876aabf94a.js")
+        if status != 200 or not body:
+            failures.append(f"player: scratch-storage's worker returned {status}")
+        status, page = get("/")
+        if status != 200 or b"vendor/scratch-vm.js" not in page:
+            failures.append(f"player: / returned {status}")
+        status, body = get("/status")
+        info = json.loads(body) if status == 200 else {}
+        if info.get("title") != "suite.sb3" or not info.get("ready") or info.get("error"):
+            failures.append(f"player: /status returned {status} {info}")
+        status, body = get("/project.sb3")
+        if status != 200 or body != SUITE.read_bytes():
+            failures.append(f"player: /project.sb3 returned {status}")
+        for name in ("scratch-vm.js", "scratch-audio.js", "licenses/scratch-vm.LICENSE"):
+            status, body = get(f"/vendor/{name}")
+            if status != 200 or body != (kitty_player.VENDOR / name).read_bytes():
+                failures.append(f"player: /vendor/{name} returned {status}")
+        for path in ("/vendor/../__init__.py", "/vendor/%2e%2e/__init__.py", "/../LICENSE", "/nothing"):
+            status, _body = get(path)
+            if status != 404:
+                failures.append(f"player: {path} returned {status}, expected 404")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    # kitty run plays .sb3 files only, and checks that a file is one before it serves it.
+    if TMP.exists():
+        shutil.rmtree(TMP)
+    TMP.mkdir()
+    try:
+        (TMP / "cat.py").write_text("import kitty\n", encoding="utf-8")
+        (TMP / "fake.sb3").write_text("not a zip", encoding="utf-8")
+        for source in (TMP / "cat.py", TMP, TMP / "fake.sb3", TMP / "missing.sb3"):
+            if kitty_player.main([str(source), "--no-browser"]) != 1:
+                failures.append(f"player: kitty run {source.name} did not refuse it")
+        fake = kitty_player.Project(TMP / "fake.sb3")
+        if fake.load() or "is not a Scratch .sb3 file" not in (fake.error or ""):
+            failures.append(f"player: a file that is not an .sb3 reported {fake.error!r}")
+    finally:
+        shutil.rmtree(TMP, ignore_errors=True)
+    return failures
+
+
 def compile_rejects():
     failures = []
     if TMP.exists():
@@ -693,6 +776,7 @@ def main():
     problems.extend(compile_images())
     problems.extend(compile_language())
     problems.extend(compile_decomp())
+    problems.extend(compile_player())
     problems.extend(compile_rejects())
     if problems:
         print("FAILED")

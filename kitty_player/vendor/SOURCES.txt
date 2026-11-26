@@ -1,0 +1,17 @@
+The Scratch runtime that `kitty run` serves. Each file is unchanged from the npm package.
+Refresh with: python tools/update_player_vendor.py
+
+scratch-vm.js  d7895213e4595fc32b92529343b8ddbf04f7b1803ea04483790c199e21640a9f  https://cdn.jsdelivr.net/npm/scratch-vm@4.8.115/dist/web/scratch-vm.js
+scratch-render.js  87c3b26793ff36a857acbe115ed102aec8e760a9ef5f82f51544fbcfb5f6c36f  https://cdn.jsdelivr.net/npm/scratch-render@1.2.126/dist/web/scratch-render.js
+scratch-storage.js  ef815b44e6acefda81fb2c5cb1893749819ffdca768cdb13040b9cee9287e20f  https://cdn.jsdelivr.net/npm/scratch-storage@3.0.39/dist/web/scratch-storage.js
+chunks/fetch-worker.0fa0968cc994fb298693.js  c9177801d5bd674bce779de2f9a4201af178f6d30e41bf93048138e210d7e77d  https://cdn.jsdelivr.net/npm/scratch-storage@3.0.39/dist/web/chunks/fetch-worker.0fa0968cc994fb298693.js
+chunks/fetch-worker.cd3a909d7b876aabf94a.js  192a15b1392476b4e63a2e1886b465a039f83ca2a8868cd1a2e41c00e63a3ac5  https://cdn.jsdelivr.net/npm/scratch-storage@3.0.39/dist/web/chunks/fetch-worker.cd3a909d7b876aabf94a.js
+scratch-svg-renderer.js  838a8a657583e175eb8b3b5e37a604da4ee8048dc31e84aac45f35e1dd95de5f  https://cdn.jsdelivr.net/npm/scratch-svg-renderer@2.5.46/dist/web/scratch-svg-renderer.js
+scratch-audio.js  632ab524776e851e1e08e7fed98d88cdf8964ca96b27488ebea68f25c8392827  https://cdn.jsdelivr.net/npm/scratch-audio@1.0.332/dist.js
+licenses/scratch-vm.LICENSE  4d7f8fd635fa6e9b318ca895132274d2acf1ef1e7d689f9e7bc96ed53d6de862  https://cdn.jsdelivr.net/npm/scratch-vm@4.8.115/LICENSE
+licenses/scratch-vm.TRADEMARK  58f77df7ffd07cd1a15da59459218b2ad296353657b9303456b2028a31168bae  https://cdn.jsdelivr.net/npm/scratch-vm@4.8.115/TRADEMARK
+licenses/scratch-render.LICENSE  4d7f8fd635fa6e9b318ca895132274d2acf1ef1e7d689f9e7bc96ed53d6de862  https://cdn.jsdelivr.net/npm/scratch-render@1.2.126/LICENSE
+licenses/scratch-render.TRADEMARK  58f77df7ffd07cd1a15da59459218b2ad296353657b9303456b2028a31168bae  https://cdn.jsdelivr.net/npm/scratch-render@1.2.126/TRADEMARK
+licenses/scratch-storage.LICENSE  4d7f8fd635fa6e9b318ca895132274d2acf1ef1e7d689f9e7bc96ed53d6de862  https://cdn.jsdelivr.net/npm/scratch-storage@3.0.39/LICENSE
+licenses/scratch-svg-renderer.LICENSE  4d7f8fd635fa6e9b318ca895132274d2acf1ef1e7d689f9e7bc96ed53d6de862  https://cdn.jsdelivr.net/npm/scratch-svg-renderer@2.5.46/LICENSE
+licenses/scratch-audio.LICENSE  4d7f8fd635fa6e9b318ca895132274d2acf1ef1e7d689f9e7bc96ed53d6de862  https://cdn.jsdelivr.net/npm/scratch-audio@1.0.332/LICENSE

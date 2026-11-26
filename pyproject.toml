@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,8 @@ version = "0.1.2"
 description = "Compile Python syntax into Scratch 3 projects"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE", "kitty_player/vendor/licenses/*"]
 dependencies = []
 authors = [
   { name = "Thayaden Pi", email = "thayaden_pi@proton.me" },
@@ -25,6 +27,10 @@ kitty-decomp = "decomp:main"
 
 [tool.setuptools]
 py-modules = ["kitty", "comp", "decomp", "cli"]
+packages = ["kitty_player"]
+
+[tool.setuptools.package-data]
+kitty_player = ["player.html", "vendor/*.js", "vendor/chunks/*.js", "vendor/SOURCES.txt", "vendor/licenses/*"]
 
 [tool.setuptools.data-files]
 "." = ["kitty.pyi"]

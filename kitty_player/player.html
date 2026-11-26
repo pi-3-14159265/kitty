@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kitty player</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #eef1f7;
+    --panel: #ffffff;
+    --text: #1f2633;
+    --muted: #5d6779;
+    --line: #d5dbe7;
+    --accent: #4c97ff;
+    --go: #3fae49;
+    --stop: #e0484b;
+    --error-bg: #fde7e7;
+    --error-text: #8c1d1d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c;
+      --panel: #1c212b;
+      --text: #e7eaf1;
+      --muted: #9aa4b6;
+      --line: #2d3442;
+      --error-bg: #3a1c1f;
+      --error-text: #ffb4b4;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body {
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 12px 16px; gap: 10px;
+  }
+  .bar { width: var(--stage-width); display: flex; align-items: center; gap: 8px; }
+  .bar .title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  button {
+    font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button svg { width: 18px; height: 18px; }
+  #flag svg { fill: var(--go); }
+  #stop svg { fill: var(--stop); }
+  label.turbo { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); user-select: none; }
+  #stage {
+    --stage-scale: 1;
+    position: relative; width: var(--stage-width); aspect-ratio: 4 / 3;
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff;
+    touch-action: none;
+  }
+  #stage:fullscreen { border: 0; border-radius: 0; width: 100vw; height: 100vh; aspect-ratio: auto; background: #000; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #monitors {
+    position: absolute; left: 0; top: 0; width: 480px; height: 360px; pointer-events: none;
+    transform: scale(var(--stage-scale)); transform-origin: 0 0;
+  }
+  #monitors .stack { position: absolute; left: 5px; top: 5px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+  /* Monitors sit on the white stage, so they keep Scratch's light colors in both themes. */
+  .monitor {
+    background: #e6f0ff; color: #575e75; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 4px;
+    font-size: 12px; padding: 2px 5px; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .monitor .value { background: #ff8c1a; color: #fff; border-radius: 4px; padding: 0 6px; min-width: 32px; text-align: center; }
+  .monitor.large .value { font-size: 16px; padding: 2px 8px; }
+  .monitor.list { flex-direction: column; align-items: stretch; width: 120px; padding: 2px; }
+  .monitor.list .name { text-align: center; font-weight: 600; }
+  .monitor.list ol { margin: 0; padding: 0 0 0 26px; max-height: 160px; overflow: hidden; font-size: 11px; }
+  .monitor.list li span { display: block; background: #fc662c; color: #fff; border-radius: 3px; margin: 1px 0; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; }
+  .monitor.list .length { text-align: center; color: #575e75; font-size: 11px; }
+  #ask {
+    position: absolute; left: 8px; right: 8px; bottom: 8px; display: none; background: var(--panel);
+    border: 2px solid var(--accent); border-radius: 10px; padding: 6px 8px; gap: 6px; flex-direction: column;
+  }
+  #ask.open { display: flex; }
+  #ask form { display: flex; gap: 6px; }
+  #ask input { flex: 1; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 4px 10px; }
+  #start {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.25); border: 0; border-radius: 0; cursor: pointer;
+  }
+  #start svg { width: 88px; height: 88px; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35)); }
+  #start[hidden] { display: none; }
+  #message {
+    width: var(--stage-width); display: none; padding: 8px 10px; border-radius: 8px;
+    background: var(--error-bg); color: var(--error-text); white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+  }
+  #message.show { display: block; }
+  .status { width: var(--stage-width); color: var(--muted); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button id="flag" type="button" title="Green flag" aria-label="Green flag">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2h2v20H5zM8 3.5c3-1.6 5.3 1.4 8.4 0 1-.4 2.1-.6 3.1-.2v9.6c-1 .4-2.1.6-3.1.2-3.1-1.4-5.4 1.6-8.4 0z"/></svg>
+    Start
+  </button>
+  <button id="stop" type="button" title="Stop" aria-label="Stop">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z"/></svg>
+    Stop
+  </button>
+  <span class="title" id="title">Kitty player</span>
+  <label class="turbo"><input type="checkbox" id="turbo"> Turbo</label>
+  <button id="full" type="button" title="Full screen" aria-label="Full screen">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 3h7v2H5v5H3zm11 0h7v7h-2V5h-5zM3 14h2v5h5v2H3zm16 0h2v7h-7v-2h5z"/></svg>
+  </button>
+</div>
+<div id="stage">
+  <canvas id="canvas" width="480" height="360" aria-label="Scratch stage"></canvas>
+  <div id="monitors" aria-live="polite"></div>
+  <div id="ask" role="dialog" aria-label="Question">
+    <div id="question"></div>
+    <form id="answer-form">
+      <input id="answer" autocomplete="off" aria-label="Answer">
+      <button type="submit" aria-label="Send answer">OK</button>
+    </form>
+  </div>
+  <button id="start" type="button" aria-label="Start the project">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#fff"/><path d="M9 6.5v11l9-5.5z" fill="#3fae49"/></svg>
+  </button>
+</div>
+<div id="message" role="alert"></div>
+<div class="status"><span id="state">Loading the Scratch runtime...</span><span id="built"></span></div>
+
+<script src="vendor/scratch-vm.js"></script>
+<script src="vendor/scratch-render.js"></script>
+<script src="vendor/scratch-storage.js"></script>
+<script src="vendor/scratch-svg-renderer.js"></script>
+<script>
+  // scratch-audio is a CommonJS build that asks for three small packages.
+  // These stand-ins give it the parts it uses. Load it after the other
+  // libraries, so their own module checks do not see these names.
+  window.module = { exports: {} };
+  window.exports = window.module.exports;
+  window.require = function (name) {
+    if (name === "audio-context") return window.AudioContext || window.webkitAudioContext;
+    if (name === "startaudiocontext") {
+      return function (context) {
+        const resume = () => { if (context.state !== "running") context.resume(); };
+        for (const type of ["pointerdown", "keydown", "touchend"]) document.addEventListener(type, resume, true);
+      };
+    }
+    if (name === "minilog") {
+      const logger = () => ({ debug() {}, info() {}, log() {}, warn: console.warn.bind(console), error: console.error.bind(console) });
+      logger.enable = () => {};
+      return logger;
+    }
+    throw new Error("scratch-audio asked for " + name);
+  };
+</script>
+<script src="vendor/scratch-audio.js"></script>
+<script>
+(() => {
+  const audioModule = window.module.exports;
+  delete window.module;
+  delete window.exports;
+  delete window.require;
+
+  const pick = (lib, name) => (lib && (lib[name] || lib.default)) || lib;
+  const VirtualMachine = pick(window.VirtualMachine, "VirtualMachine");
+  const ScratchRender = pick(window.ScratchRender, "ScratchRender");
+  const ScratchStorage = pick(window.ScratchStorage, "ScratchStorage");
+  const AudioEngine = pick(audioModule, "AudioEngine");
+
+  const $ = id => document.getElementById(id);
+  const canvas = $("canvas");
+  const stage = $("stage");
+  const startButton = $("start");
+  const state = $("state");
+  const message = $("message");
+
+  // Size the stage to the window, keeping Scratch's 4:3 shape.
+  function layout() {
+    const room = Math.max(240, Math.min(window.innerWidth - 32, (window.innerHeight - 120) * 4 / 3));
+    document.documentElement.style.setProperty("--stage-width", Math.floor(room) + "px");
+    const rect = stage.getBoundingClientRect();
+    stage.style.setProperty("--stage-scale", rect.width / 480);
+    if (window.vm) renderer.resize(rect.width, rect.height);
+  }
+  window.addEventListener("resize", layout);
+  document.addEventListener("fullscreenchange", layout);
+  layout();
+
+  const renderer = new ScratchRender(canvas);
+  const vm = new VirtualMachine();
+  vm.attachRenderer(renderer);
+  vm.attachStorage(new ScratchStorage());
+  vm.attachV2BitmapAdapter(new ScratchSVGRenderer.BitmapAdapter());
+  vm.attachV2SVGAdapter(new ScratchSVGRenderer.SVGRenderer());
+  try {
+    vm.attachAudioEngine(new AudioEngine());
+  } catch (error) {
+    console.warn("Sound is off:", error);
+  }
+  window.vm = vm;
+  window.renderer = renderer;
+  layout();
+
+  // kitty run --verbose: what happens in the project goes back to the terminal.
+  // Lines are sent in batches; a line that repeats is counted, not resent.
+  const report = (() => {
+    let enabled = false;
+    let token = "";
+    let queue = [];
+    let timer = null;
+    let last = "";
+    let repeats = 0;
+    let second = 0;
+    let sent = 0;
+    let skipped = 0;
+    function flush() {
+      timer = null;
+      if (repeats) { queue.push(`  (${repeats} more times)`); repeats = 0; last = ""; }
+      if (skipped) { queue.push(`(${skipped} more lines skipped)`); skipped = 0; }
+      if (!queue.length) return;
+      const lines = queue.splice(0);
+      fetch(`log?token=${encodeURIComponent(token)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(lines),
+      }).catch(() => {});
+    }
+    function schedule() { if (!timer) timer = setTimeout(flush, 200); }
+    function line(text) {
+      if (!enabled) return;
+      if (text === last) { repeats++; schedule(); return; }
+      if (repeats) { queue.push(`  (${repeats} more times)`); repeats = 0; }
+      last = text;
+      const now = Math.floor(Date.now() / 1000);
+      if (now !== second) { second = now; sent = 0; }
+      if (++sent > 40) { skipped++; schedule(); return; }
+      queue.push(text);
+      schedule();
+    }
+    line.enable = secret => { enabled = true; token = secret; };
+    return line;
+  })();
+
+  const hatNames = {
+    event_whenflagclicked: () => "when green flag clicked",
+    event_whenkeypressed: fields => `when [${fields.KEY_OPTION}] key pressed`,
+    event_whenthisspriteclicked: () => "when this sprite clicked",
+    event_whenstageclicked: () => "when stage clicked",
+    event_whenbroadcastreceived: fields => `when I receive [${fields.BROADCAST_OPTION}]`,
+    event_whenbackdropswitchesto: fields => `when backdrop switches to [${fields.BACKDROP}]`,
+    event_whengreaterthan: fields => `when [${fields.WHENGREATERTHANMENU}] >`,
+    control_start_as_clone: () => "when I start as a clone",
+  };
+  const startHats = vm.runtime.startHats.bind(vm.runtime);
+  vm.runtime.startHats = function (opcode, fields, target) {
+    const named = Object.assign({}, fields || {});  // startHats changes fields, so copy them first
+    const threads = startHats(opcode, fields, target);
+    if (threads && threads.length) {
+      const label = (hatNames[opcode] || (() => opcode))(named);
+      const owner = target ? ` (${target.getName()})` : "";
+      report(`${label}${owner}: started ${threads.length} script${threads.length === 1 ? "" : "s"}`);
+    }
+    return threads;
+  };
+  vm.on("PROJECT_RUN_START", () => report("scripts are running"));
+  vm.on("PROJECT_RUN_STOP", () => report("every script has finished"));
+  vm.runtime.on("SAY", (target, type, text) => {
+    if (text !== "" && text !== null && text !== undefined) {
+      report(`${target.getName()} ${type === "think" ? "thinks" : "says"}: ${text}`);
+    }
+  });
+  for (const level of ["warn", "error"]) {
+    const original = console[level].bind(console);
+    console[level] = (...args) => {
+      original(...args);
+      const text = args.map(item => (item && item.message) || String(item)).join(" ");
+      // Block labels come from the Scratch editor, which the player does not have. Running does not need them.
+      if (/^Translation for ".*" in ".*" is missing/.test(text)) return;
+      report(`${level}: ${text}`);
+    };
+  }
+  window.addEventListener("error", event => report(`error: ${event.message}`));
+  window.addEventListener("unhandledrejection", event => report(`error: ${(event.reason && event.reason.message) || event.reason}`));
+
+  let started = false;
+  let version = null;
+
+  function showMessage(text) {
+    message.textContent = text || "";
+    message.classList.toggle("show", Boolean(text));
+  }
+
+  function go() {
+    report("green flag clicked");
+    started = true;
+    startButton.hidden = true;
+    vm.greenFlag();
+  }
+
+  $("flag").addEventListener("click", go);
+  startButton.addEventListener("click", go);
+  $("stop").addEventListener("click", () => {
+    report("stop clicked");
+    vm.stopAll();
+  });
+  $("turbo").addEventListener("change", event => {
+    report(`turbo mode ${event.target.checked ? "on" : "off"}`);
+    vm.setTurboMode(event.target.checked);
+  });
+  $("full").addEventListener("click", () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else stage.requestFullscreen().catch(() => {});
+  });
+
+  // Keyboard. Keys go to the project unless the answer box is being typed in.
+  const typing = () => document.activeElement === $("answer");
+  const scrollKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "]);
+  document.addEventListener("keydown", event => {
+    if (typing() || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target instanceof HTMLButtonElement && (event.key === " " || event.key === "Enter")) return;
+    vm.postIOData("keyboard", { key: event.key, keyCode: event.keyCode, isDown: true });
+    if (scrollKeys.has(event.key)) event.preventDefault();
+  });
+  document.addEventListener("keyup", event => {
+    if (typing()) return;
+    vm.postIOData("keyboard", { key: event.key, keyCode: event.keyCode, isDown: false });
+  });
+
+  // Mouse and touch, in canvas pixels. Draggable sprites can be dragged, as in the Scratch player.
+  let drag = null;
+  function point(event) {
+    const rect = canvas.getBoundingClientRect();
+    const source = event.touches && event.touches.length ? event.touches[0] : (event.changedTouches ? event.changedTouches[0] : event);
+    return { x: source.clientX - rect.left, y: source.clientY - rect.top, width: rect.width, height: rect.height };
+  }
+  function scratchXY(p) {
+    return [p.x / p.width * 480 - 240, 180 - p.y / p.height * 360];
+  }
+  function postMouse(p, extra) {
+    vm.postIOData("mouse", Object.assign({ x: p.x, y: p.y, canvasWidth: p.width, canvasHeight: p.height }, extra));
+  }
+  function down(event) {
+    if (event.target !== canvas) return;
+    const p = point(event);
+    const target = vm.runtime.getTargetByDrawableId(renderer.pick(p.x, p.y));
+    if (target && !target.isStage && target.draggable) {
+      const [x, y] = scratchXY(p);
+      drag = { target, dx: target.x - x, dy: target.y - y, moved: false };
+      vm.startDrag(target.id);
+    }
+    postMouse(p, { isDown: true });
+    if (event.cancelable && event.type === "touchstart") event.preventDefault();
+  }
+  function move(event) {
+    const p = point(event);
+    postMouse(p, {});
+    if (drag) {
+      const [x, y] = scratchXY(p);
+      drag.target.setXY(x + drag.dx, y + drag.dy, true);
+      drag.moved = true;
+    }
+  }
+  function up(event) {
+    const p = point(event);
+    const wasDragged = Boolean(drag && drag.moved);
+    if (drag) {
+      vm.stopDrag(drag.target.id);
+      drag = null;
+    }
+    postMouse(p, { isDown: false, wasDragged });
+  }
+  document.addEventListener("mousedown", down);
+  document.addEventListener("mousemove", move);
+  document.addEventListener("mouseup", up);
+  canvas.addEventListener("touchstart", down, { passive: false });
+  document.addEventListener("touchmove", move);
+  document.addEventListener("touchend", up);
+
+  // ask and wait: a sprite that shows says the question; the stage or a hidden sprite puts it in the box.
+  vm.runtime.addListener("QUESTION", question => {
+    const box = $("ask");
+    if (question === null) {
+      box.classList.remove("open");
+      return;
+    }
+    report(question ? `ask: ${question}` : "ask: (the sprite says the question)");
+    $("question").textContent = question;
+    $("question").hidden = !question;
+    box.classList.add("open");
+    $("answer").value = "";
+    $("answer").focus();
+  });
+  $("answer-form").addEventListener("submit", event => {
+    event.preventDefault();
+    $("ask").classList.remove("open");
+    report(`answer: ${$("answer").value}`);
+    vm.runtime.emit("ANSWER", $("answer").value);
+    $("answer").blur();
+  });
+
+  // Monitors: variables and lists that show on the stage.
+  const labels = {
+    motion_xposition: "x position", motion_yposition: "y position", motion_direction: "direction",
+    looks_costumenumbername: "costume", looks_backdropnumbername: "backdrop", looks_size: "size",
+    sensing_answer: "answer", sensing_loudness: "loudness", sensing_timer: "timer",
+    sensing_username: "username", sound_volume: "volume", sensing_current: "current",
+  };
+  function text(value) {
+    if (typeof value === "number" && !Number.isInteger(value)) return String(Number(value.toFixed(6)));
+    return String(value);
+  }
+  vm.addListener("MONITORS_UPDATE", monitors => {
+    const layer = $("monitors");
+    layer.textContent = "";
+    const stack = document.createElement("div");
+    stack.className = "stack";
+    layer.appendChild(stack);
+    monitors.valueSeq().forEach(monitor => {
+      if (!monitor.visible) return;
+      const params = monitor.params && monitor.params.toJS ? monitor.params.toJS() : (monitor.params || {});
+      const name = params.VARIABLE || params.LIST || labels[monitor.opcode] || monitor.opcode;
+      const label = monitor.spriteName ? `${monitor.spriteName}: ${name}` : name;
+      const box = document.createElement("div");
+      if (monitor.mode === "list") {
+        box.className = "monitor list";
+        const title = document.createElement("div");
+        title.className = "name";
+        title.textContent = label;
+        const items = document.createElement("ol");
+        const values = Array.isArray(monitor.value) ? monitor.value : [];
+        for (const value of values.slice(0, 50)) {
+          const item = document.createElement("li");
+          const span = document.createElement("span");
+          span.textContent = text(value);
+          item.appendChild(span);
+          items.appendChild(item);
+        }
+        const length = document.createElement("div");
+        length.className = "length";
+        length.textContent = `length ${values.length}`;
+        box.append(title, items, length);
+      } else {
+        box.className = monitor.mode === "large" ? "monitor large" : "monitor";
+        const value = document.createElement("span");
+        value.className = "value";
+        value.textContent = text(monitor.value);
+        if (monitor.mode !== "large") {
+          const name = document.createElement("span");
+          name.textContent = label;
+          box.appendChild(name);
+        }
+        box.appendChild(value);
+      }
+      // Monitors left at the corner stack down; others go where the project put them.
+      if ((monitor.x || 0) <= 5 && (monitor.y || 0) <= 5) {
+        stack.appendChild(box);
+      } else {
+        box.style.position = "absolute";
+        box.style.left = monitor.x + "px";
+        box.style.top = monitor.y + "px";
+        layer.appendChild(box);
+      }
+    });
+  });
+
+  async function load(status) {
+    const begin = performance.now();
+    const data = await fetch(`project.sb3?v=${status.version}`).then(response => {
+      if (!response.ok) throw new Error(`the project could not be read (${response.status})`);
+      return response.arrayBuffer();
+    });
+    vm.stopAll();
+    await vm.loadProject(data);
+    version = status.version;
+    $("built").textContent = `Built ${new Date().toLocaleTimeString()}`;
+    state.textContent = status.watch ? `Watching ${status.title} for changes` : "Ready";
+    const sprites = vm.runtime.targets.filter(target => target.isOriginal && !target.isStage).length;
+    report(`${version > 1 ? "reloaded" : "loaded"} ${status.title} in ${Math.round(performance.now() - begin)} ms: ${sprites} sprite${sprites === 1 ? "" : "s"}`);
+    if (started) vm.greenFlag();
+  }
+
+  async function check() {
+    let status;
+    try {
+      status = await fetch("status", { cache: "no-store" }).then(response => response.json());
+    } catch (error) {
+      state.textContent = "The kitty run window was closed. Run it again to keep playing.";
+      return false;
+    }
+    document.title = `${status.title} - Kitty player`;
+    $("title").textContent = status.title;
+    if (status.verbose) report.enable(status.token);
+    showMessage(status.error);
+    if (status.version !== version && status.ready) {
+      try {
+        await load(status);
+      } catch (error) {
+        showMessage(`Scratch could not load this project: ${error.message || error}`);
+      }
+    }
+    return status.watch;
+  }
+
+  (async () => {
+    vm.start();
+    const watch = await check();
+    if (watch) setInterval(check, 1000);
+  })();
+})();
+</script>
+</body>
+</html>

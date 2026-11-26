@@ -23,6 +23,11 @@ Remove-Item -Recurse -Force dist, build, *.egg-info -ErrorAction SilentlyContinu
 
 ## 3. Build the release
 
+The player's Scratch runtime lives in `kitty_player/vendor/`. To fetch it
+again, run `python tools/update_player_vendor.py`; `SOURCES.txt` records each
+file's URL and SHA-256, and `python tests/run.py` checks them. Keep the BSD
+versions pinned there: later Scratch releases are AGPL-3.0-only.
+
 Update `project.version` in `pyproject.toml` and `__version__` in `kitty.py`
 to the same version first.
 

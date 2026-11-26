@@ -104,6 +104,8 @@ kitty build cat.py mouse.py -o game.sb3
 kitty build folder/
 kitty compile game.py
 kitty comp game.py
+kitty run game.sb3
+kitty run game.sb3 --verbose
 kitty decomp game.sb3
 ```
 
@@ -149,6 +151,11 @@ kitty build folder/
 `Sounds/`, `stage.py`, one Python file per sprite, and `blocksAsText.txt`.
 `kitty build game/` builds it again.
 
+`kitty run game.sb3` plays an `.sb3` file in your browser. Scratch's engine
+is bundled in Kitty, so the browser is all it needs: no Node.js, no git, and
+no internet connection. `--verbose` prints what the project does while it
+plays.
+
 One source file produces an adjacent `.sb3` file. Multiple source files
 produce `project.sb3` by default. Use `-o` to select an output name. A
 directory compiles eligible `.py` files directly inside that directory.
@@ -161,8 +168,20 @@ directory compiles eligible `.py` files directly inside that directory.
 - [Values, lists, and dictionaries](https://github.com/pi-3-14159265/kitty/wiki/values-and-math)
 - [Sprites and targets](https://github.com/pi-3-14159265/kitty/wiki/sprites)
 - [API reference](https://github.com/pi-3-14159265/kitty/wiki/reference)
+- [Play a project: kitty run](https://github.com/pi-3-14159265/kitty/wiki/run)
 - [Turn a Scratch project into Python](https://github.com/pi-3-14159265/kitty/wiki/decompile)
 - [Limitations](https://github.com/pi-3-14159265/kitty/wiki/limitations)
+
+## License
+
+Kitty is released under the [MIT License](LICENSE).
+
+`kitty run` bundles Scratch's runtime (scratch-vm, scratch-render,
+scratch-storage, scratch-svg-renderer, and scratch-audio) by the Massachusetts
+Institute of Technology, in its last BSD-3-Clause releases. Those files keep
+their own license; see `kitty_player/vendor/licenses/`. Scratch, the Scratch
+logo, and the Scratch Cat are trademarks of MIT. Kitty is not made or endorsed
+by MIT or the Scratch Foundation.
 
 Project and maintainer links:
 
